@@ -1,6 +1,6 @@
 # Programmatic Animation Pipeline & Tooling Guide
 
-This guide explains how an AI Agent builds, voices, masters, and renders **Real Lens** style 2.5D animations end-to-end using Node.js, HTML5 Canvas, Gemini Interactions TTS, Puppeteer, and FFmpeg.
+This guide explains how an AI Agent builds, voices, masters, and renders **Real Lens** and **Rules of Survival / Liminal Space** style 2.5D animations end-to-end using Node.js, HTML5 Canvas, Gemini Interactions TTS, Puppeteer, and FFmpeg.
 
 ---
 
@@ -11,12 +11,12 @@ Install local dependencies once (`puppeteer-core`, `ffmpeg-static`, `@fontsource
 | File / Layer | Role in Production Pipeline |
 | :--- | :--- |
 | `episode.js` | Structured array of scenes (`id`, `view`, `vo` Thai narration, `pad`, `bed` ambience type, `sfx` timestamped cues, HUD metadata). |
-| `core.js` | Reusable 2.5D cylindrical character rigs, snow/frost/flicker shaders, camera zoom/blur helpers, and Cream/Slate HUD card renderers. |
-| `views.js` | Scene-specific Canvas2D painters mapped by `scene.view` (e.g., `coldOpen`, `trafficJam`, `tentMicroclimate`, `terracottaHeater`, `endcard`). |
+| `core.js` | Reusable 2.5D cylindrical character rigs (Protagonist "ต้น", Entity "ภารโรงไร้หน้า"), procedural shaders (wet tile shine, fluorescent flicker, horror vignette), camera rack-focus blur helpers, and Cream/Slate HUD card renderers. |
+| `views.js` | Scene-specific Canvas2D painters mapped by `scene.view` (e.g., `parkingB2`, `liminalMall`, `fountainSquare`, `supermarket`, `fittingRoom`, `darknessSneak`, `outroCard`). |
 | `generate_audio.js` | Synthesizes unified Thai voiceover (**`gemini-3.8-flash-tts` 1st priority**), normalizes to `-18 LUFS`, mixes procedural SFX/ambience, and outputs `audio/master.wav`, `audio/master.mp3`, `timeline.json`, and `timeline.js`. |
 | `index.html` | Interactive HTML5 Canvas player (`1280x720` or `1920x1080`) exposing deterministic `window.renderAtTime(sec)` and `body.export-mode`. |
 | `render_mp4.js` | Steps headless Chrome in frame batches (`24` or `30` FPS) and pipes JPEG frames into `ffmpeg -f image2pipe` with `audio/master.wav`. |
-| `generate_thumbnail.js` | Renders `1920x1080` YouTube thumbnails (5-Panel Strip + Dark Split Scene). |
+| `generate_thumbnail.js` | Renders `1920x1080` YouTube thumbnails (Showdown Split + 5-Panel Strip). |
 | `generate_shorts_overlays.js` / `render_all_shorts.js` / `generate_scene_covers.js` | Cuts the master MP4 into `1080x1920` (`9:16`) Shorts episodes (`EP 1–5`) with HUD overlays and scene-based vertical covers (see [Shorts & Thumbnails Guide](./shorts-and-thumbnails.md)). |
 
 ---
@@ -126,35 +126,46 @@ function unifyVocalTone(rawWav, normWav) {
 }
 ```
 
-### 2.3 Procedural SFX & Sidechain Ducking
-Synthesize deterministic 44.1 kHz Float32 PCM cues (`pop` for HUD cards, `gust`/`blizzard` wind, `crack` for thermal concrete snaps, `shatter` for glass, `water` for burst pipes, `blackout` transformer thuds, `heartbeat`) and duck SFX by up to `35%` whenever voiceover envelope `envv` is active (`const duck = 1 - Math.min(0.35, envv * 0.45);`).
+### 2.3 Procedural Foley & Atmospheric Synthesis (Liminal Survival Horror)
+
+Synthesize deterministic 44.1 kHz Float32 PCM cues and mix with voiceover sidechain ducking (duck SFX by 35% during speech):
+- **`fluorescent_hum`:** 60Hz and 120Hz sine wave layered with low-level white noise to simulate harsh industrial fluorescent lighting ballasts.
+- **`mechanical_shift`:** Deep pitch-dropping rumble (`45Hz` → `28Hz`) layered with filtered metallic scraping for the 6-hour mall rotation.
+- **`cart_wheels`:** Periodic high-frequency squeaks (`2.8kHz` – `3.4kHz`) occurring every `1.2s` for The Cleaner's cart wheels.
+- **`mop_squelch`:** Band-passed noise bursts (`300Hz` – `1.2kHz`) with rapid exponential decay simulating wet mop strokes.
+- **`distance_sonar`:** Short high-pitched tick/ping with stereo delay when the Distance Tracker Pill drops closer to the protagonist.
+- **`ui_pop`:** Crisp high chime (`880Hz` sine ping with 30ms decay) whenever a HUD rule or math card scales into view.
 
 ---
 
 ## 3. Core HTML5 Canvas 2.5D Architecture & Deterministic MP4 Export
 
 ### 3.1 Multi-Plane `window.renderAtTime(t)`
+
 ```javascript
 window.renderAtTime = function(t) {
   const scene = findSceneAt(t);
   const localT = t - scene.start;
   ctx.clearRect(0, 0, W, H);
 
-  // Plane 0–2: Sky, Midground & Characters (blur when HUD focus is active)
+  // Plane 0–2: Backdrop, Architecture & Characters (blurred when HUD focus is active)
   ctx.save();
   if (scene.hudBlur) ctx.filter = 'blur(10px) brightness(0.72)';
   VIEWS[scene.view](ctx, localT, t, scene);
   ctx.restore();
 
-  // Plane 3–5: Volumetric Vignette, HUD Rule/Math Cards, Telemetry & Subtitles
+  // Plane 3–5: Horror Vignette, HUD Rule/Math Cards, Telemetry & Subtitles
   drawHorrorVignette(ctx, W, H);
   if (scene.hud) drawHudCard(ctx, localT, scene.hud);
+  if (scene.telemetry) drawTelemetry(ctx, localT, scene.telemetry);
   drawSubtitleAt(ctx, localT, scene.subs);
 };
 ```
 
 ### 3.2 Batched Puppeteer -> FFmpeg `image2pipe` Exporter (`render_mp4.js`)
+
 Step `BATCH = 12` frames per `page.evaluate` call returning base64 JPEG data URLs (`canvas.toDataURL('image/jpeg', 0.92)`), and stream decoded buffers into:
+
 ```bash
 ffmpeg -y -f image2pipe -vcodec mjpeg -r 24 -i - -i audio/master.wav \
   -c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 192k \
