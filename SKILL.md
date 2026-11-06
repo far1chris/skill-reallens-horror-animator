@@ -1,12 +1,8 @@
 ---
 name: reallens-horror-animator
 description: >-
-  End-to-end production workflow and programmatic 2D vector animation system for creating
-  "Real Lens" (@real_lens1) style 2.5D geometric flat-vector survival horror, urban legend,
-  liminal-space survival, and calculated disaster survival videos. Covers scripting, modular
-  HTML5 Canvas rigging, HUD rule/math cards, unified Thai TTS voiceover (prioritizing
-  gemini-3.8-flash-tts), procedural SFX + EBU R128 mastering, 16:9 MP4 rendering, YouTube
-  thumbnails, and 9:16 vertical Shorts/TikTok/Reels multi-episode splitting with scene-based covers.
+  ระบบสร้างแอนิเมชัน 2.5D Canvas แนวสยองขวัญเชิงวิเคราะห์และเอาชีวิตรอดด้วยตรรกะ (สไตล์ Real Lens)
+  พร้อมระบบ 2-Segment FK Walk Cycle, Dual-System Object Manipulation, HUD Telemetry และ Pipeline เรนเดอร์ MP4 16:9 / Shorts 9:16
 ---
 
 # Real Lens (@real_lens1) 2.5D Geometric Survival & Horror Animation Skill
@@ -17,9 +13,28 @@ Unlike static AI image-slideshow channels, this style uses **procedural 2D flat-
 
 ---
 
-## 1. Visual DNA & Art Direction ("2.5D Geometric Paper-Cutout Survival Horror")
+## 1. Antigravity Workspace Setup & Project Stack
 
-### 1.1 Character Construction (Authentic Real Lens Vector Rig)
+### 1.1 Project Initialization & Dependencies
+```bash
+npm init -y
+npm install puppeteer-core ffmpeg-static @fontsource/kanit
+export GEMINI_API_KEY="your-api-key"
+```
+
+### 1.2 Multi-Theme & Entity Archetypes (Presets)
+
+| หมวดหมู่พล็อต (Theme) | โทนสีหลัก (Palette) | ข้อมูลบน HUD Telemetry | พฤติกรรมตัวละครและสิ่งลี้ลับ (Entity Rig) |
+| :--- | :--- | :--- | :--- |
+| **A. ห้างไร้ทางออก / Liminal Space** | กรมท่ามืด `#0B0F19`, เขียวไฟฉุกเฉิน `#10B981`, แดงเตือนภัย `#EF4444` | รหัสเสา (`C-13`), เวลาไฟดับ, จำนวนเสบียง (มล. / แคลอรี), สมการ $\pmod{16}$ | พระเอกเดินสำรวจ/แปะเทปกาว; พนักงานไร้หน้าเข็นถังม็อบสีเหลือง (`entity_mop`) |
+| **B. ภัยพิบัติคำนวณ (Calculated Disaster)** | น้ำเงินเยือกแข็ง `#082F49`, ฟ้าไซอัน `#38BDF8`, ส้มความร้อน `#F97316` | อุณหภูมิภายนอก ($-40^\circ\text{C}$), อุณหภูมิแกนกลางร่างกาย ($36.8^\circ\text{C}$), ออกซิเจน ($\%$) | ตัวละครเดินสั่น/กอดอก, ลมหายใจเป็นไอขาว, ขอบจอมี Shader น้ำแข็งเกาะ |
+| **C. กฎกะดึก (Night Shift Rules)** | ดำสนิท `#09090B`, เหลืองหลอดฟลูออเรสเซนต์ `#FACC15`, เลือดหมู `#991B1B` | กฎข้อที่ $1\text{–}7$, ระยะห่างจากเป้าหมาย ($\text{ม.}$), ระดับเสียง ($\text{dB}$) | ตัวละครซ่อนหลังเคาน์เตอร์/ปิดปากกลั้นหายใจ (`hide_breath`), ผู้โดยสารไร้เงา |
+
+---
+
+## 2. Visual DNA & Art Direction ("2.5D Geometric Paper-Cutout Survival Horror")
+
+### 2.1 Character Construction (Authentic Real Lens Vector Rig)
 Characters are built from clean geometric Canvas2D/SVG primitives with **no heavy black outlines** (lineless flat shading with cylindrical horizontal gradients):
 - **Head & Face (Strict Real Lens Standard):**
   - Smooth oval capsule/dome shape (`#D49B66` → `#C0824D` for human skin; `#EAECEF` → `#CFD4DC` for pale entities).
@@ -36,18 +51,35 @@ Characters are built from clean geometric Canvas2D/SVG primitives with **no heav
   - **The Reveal (Image 3 Reference):** Two vertical black hollow eye slits with dark crimson / blood trails dripping down (`#8B0000`). No mouth or nose.
   - **Equipment:** Vintage commercial yellow mop bucket with squeezer cart (`#EAB308`), long natural wood mop pole (`#D4A373`), and damp mop head creating reflective wet tile streaks.
   - **Movement:** Rigid, slow, unhurried mechanical stride (e.g., `y` bobbing `Math.sin(t * 4) * 2px`, mop swaying synchronously).
-- **Proportions & Neck (Anti-Stilt Standard):**
-  - Proportional cylindrical neck (width ~11px, length ~14px) with continuous sloping **Trapezius collar** into shirt (eliminates disjoint "bowling pin/giraffe" necks).
-  - Balanced athletic height: Torso ~40%, Legs ~60%. Articulated knee joints with natural flexion, calf taper, and tactical lug-soled rubber work boots (eliminates rigid stilt legs).
-  - Arms hang naturally with subtle $15^\circ$ elbow bend and rounded cuffs/hands.
-- **Weight-bearing Movement Ergonomics:**
-  - When carrying heavy survival loads (e.g., 15kg rice sack, supplies), supplies rest on the **shoulder and back** so the character's head and face remain **100% visible** in 3/4 view. Spine tilts forward $14^\circ$ and knees bend $20^\circ$ to absorb load. Arms wrap under to lift and grip.
+- **2-Segment Articulated FK Locomotion (`core.js`):**
+  - Driven by `drawArticulatedLeg`: `thigh` (46px) + `calf` (44px) + `planted shoe` (-10px to +18px with ground damping).
+  - Supported posture kinematics:
+    - `'walk'`: `freq: 5.2, strideAmp: 0.42, kneeAmp: 0.58, torsoLean: 0.04`
+    - `'sneak'`: `freq: 3.2, strideAmp: 0.28, kneeAmp: 0.65, torsoLean: 0.12, headPitch: 0.10`
+    - `'idle_inspect'` / `'hide_breath'`: `freq: 1.5, strideAmp: 0.0, kneeAmp: 0.0`
+    - `'crouch_hold'`: `freq: 1.2, crouchOffsetY: 48, torsoLean: 0.18, headPitch: 0.16`
+    - `'entity_mop'`: `freq: 2.6, strideAmp: 0.24, kneeAmp: 0.35, torsoLean: 0.08`
+- **Dual-System Hand Rigging & Object Manipulation:**
+  - **Full-Body Hand Sockets:** Attached to wrist coordinates (`handX`, `handY`) with natural pendulum lag:
+    - `'carry_bag'`: White plastic bag swinging with pendulum lag.
+    - `'crouch_hold_item'`: Holding blue/white milk carton in crouch.
+    - `'two_hand_mop'`: Two-handed mop pole grip with angled yellow bucket cart.
+  - **Macro POV Hand Rig (`drawMacroHandRig`):** Close-up 4-finger hand for:
+    - `'marker_pen'`: Writing tape codes or math on walls.
+    - `'tape_roll'`: Applying duct tape arrows to floors.
+    - `'wooden_pencil'`: Sketching sector rotation maps.
 
-### 1.2 2.5D Multi-Plane Environment & Shaders
+### 2.2 2.5D Multi-Plane Environment & Shaders
 Compose every scene from **4 depth planes** plus environmental shaders:
 1. **Plane 0 — Sky / Ambient Backdrop:** Deep midnight blue (`#080C18` → `#141D30`), Backrooms sickly fluorescent ochre (`#2A2614` → `#14120A`), or parking lot concrete slate (`#0F172A` → `#020617`).
 2. **Plane 1 — Blurred Far Background (`ctx.filter = 'blur(8px)'`):** Distant parking rows, infinite one-point perspective mall corridors, or snow-buried streets. Rack-focus dynamically to `blur(12px–14px)` whenever a HUD Rule/Math Card enters.
 3. **Plane 2 — Midground Architecture & Calculated Survival Props:**
+   - **Underground Parking B2:** Concrete pillars with black-and-yellow diagonal hazard stripes (`#EAB308` / `#09090B`), minimalist parked cars (blue, white, charcoal), numbered signage pillars (`C-01` to `C-12` vs impossible `C-13`).
+   - **Infinite Liminal Mall:** Pastel storefront shutter doors, infinite ceiling rows of diffuse warm fluorescent light tubes (`#FEF08A` @ `0.85`), central fountain square with water jets, supermarket aisles stacked with geometric cereal/bread packaging.
+   - **Hiding Spaces:** Clothing store fitting room booths with deep crimson velvet curtains (`#7F1D1D`), emergency exit fire doors with glowing neon green exit indicators (`[P - B2]`).
+4. **Plane 3 — Volumetric Light Cones, Floor Reflections & Vignette:**
+   - Wet mop floor reflections: Glossy floor tiles (`#0F172A`) reflecting ambient light and entity silhouette with dynamic water puddle shine (`rgba(255, 255, 255, 0.15)`).
+   - Flickering streetlights/fluorescents, warm flashlight cones, blackout transitions (lights snapping off row-by-row into darkness), and a dark radial horror vignette (`transparent 45%` → `rgba(0,0,0,0.88) 100%`).
    - **Underground Parking B2:** Concrete pillars with black-and-yellow diagonal hazard stripes (`#EAB308` / `#09090B`), minimalist parked cars (blue, white, charcoal), numbered signage pillars (`C-01` to `C-12` vs impossible `C-13`).
    - **Infinite Liminal Mall:** Pastel storefront shutter doors, infinite ceiling rows of diffuse warm fluorescent light tubes (`#FEF08A` @ `0.85`), central fountain square with water jets, supermarket aisles stacked with geometric cereal/bread packaging.
    - **Hiding Spaces:** Clothing store fitting room booths with deep crimson velvet curtains (`#7F1D1D`), emergency exit fire doors with glowing neon green exit indicators (`[P - B2]`).
@@ -143,8 +175,10 @@ Read [Pipeline & Tooling Guide](./references/pipeline-and-tooling.md) for the co
 3. **3rd Priority — `gemini-3.1-flash-tts-preview`:**
    - Separate Free Tier quota pool via `/v1beta/interactions` with voice `Puck`. **Important:** Omit `annotations` (`speech_metadata`) for `3.1-flash-tts-preview` (it returns `HTTP 400` if `speech_metadata` is present) and wrap raw `audio/l16` (`24 kHz` mono PCM) in a 44-byte RIFF WAV header if `"RIFF"` is absent.
 
-### 4.2 Strict Single-Persona Consistency & Foley Integration
+### 4.2 Strict Single-Persona Consistency, SHA-256 Cache & Proportional Subtitles
 - **NEVER mix different TTS engines within the same video** (e.g., never mix Gemini `Puck` on Scenes 1–3 with `msedge-tts` on Scenes 4–25). All scenes (`01`..`N`) MUST share one identical vocal persona.
+- **SHA-256 Disk Caching (`audio/cache/<hash>.wav`):** Hash the scene text payload to prevent redundant API calls when regenerating or modifying unrelated scenes.
+- **Proportional Thai Subtitles:** Chunk Thai dialogue to `<= 36` characters per cue and calculate start/end timestamps proportionally by character length.
 - **Specific Atmospheric SFX for Liminal Survival Horror:**
   - `fluorescent_hum`: Persistent 60Hz + 120Hz electrical buzz ducked under voice.
   - `mechanical_grind`: Deep low-frequency concrete-on-steel friction for the 6-hour sector shifts.
@@ -160,7 +194,7 @@ Read [Pipeline & Tooling Guide](./references/pipeline-and-tooling.md) for the co
 Read [Shorts & Thumbnails Guide](./references/shorts-and-thumbnails.md) for FFmpeg filter graphs and Puppeteer templates.
 
 1. **Interactive HTML5 Player & Full `16:9` MP4 (`index.html` + `render_mp4.js`):**
-   - Modular `episode.js` (script + SFX cues), `core.js` (2.5D rigs + HUD renderer), `views.js` (scene renderers), `timeline.js`, and deterministic `24/30 FPS` Puppeteer-to-FFmpeg `image2pipe` export.
+   - Modular `episode.js` (script + SFX cues), `core.js` (2.5D rigs + HUD renderer), `views.js` (scene renderers), `timeline.js`, and deterministic `24/30 FPS` Puppeteer-to-FFmpeg `image2pipe` export at `loudnorm=I=-18:TP=-1.5:LRA=11`.
 2. **Long-Form YouTube Thumbnails (`1920x1080`) + SEO Package:**
    - Generate **2 variants**:
      - (A) **Showdown / Confrontation Split (The Signature Real Lens Thumbnail):** Entity with mop and bleeding eyes on left, Protagonist crouching in shock on right, Rule 1 card top-left, Telemetry + Distance pill top-right, Giant bold white title with red neon glow + yellow quote banner bottom.
@@ -172,6 +206,7 @@ Read [Shorts & Thumbnails Guide](./references/shorts-and-thumbnails.md) for FFmp
      - `EP 3`: ซูเปอร์มาร์เก็ตวันหมดอายุ 31 ก.พ. & คำนวณ 4,800 kcal
      - `EP 4`: ตี 3 ไฟดับ... ภารโรงไร้หน้า & ซ่อนตัวในห้องลองเสื้อ
      - `EP 5`: แผนที่บนแขน, คำนวณช่องทางออก mod 12 & โน้ตปริศนาวันที่ 8
+   - **Shorts Mastering & Framing:** Mastered to `-14 LUFS`, rendered with **Smart Center Zoom ($1.35\times$)** and **Safe Zone Check** (subtitles strictly $Y \le 1580\text{ px}$, right margin $\ge 140\text{ px}$).
 4. **Scene-Based Vertical Shorts Covers (`1080x1920`, `9:16`):**
    - Extract real climax frame from each episode (`ffmpeg -ss <t> -i master.mp4 -frames:v 1`) and composite in Puppeteer Canvas with: glowing accent border, Volumetric Flashlight Beam, Comic Speech Bubble, Bold White + Giant Blood-Red Top Headline, and `EP 1–5` Bottom Stamp.
 5. **Viral Copywriting Package (Titles, Captions & Hashtags):**
@@ -179,7 +214,7 @@ Read [Shorts & Thumbnails Guide](./references/shorts-and-thumbnails.md) for FFmp
 
 ---
 
-## 6. End-to-End Production Checklist (6-Phase Protocol)
+## 6. End-to-End Production Checklist & QA Gate
 
 When creating a new Real Lens episode from scratch, execute this exact 6-phase pipeline:
 
@@ -190,12 +225,12 @@ When creating a new Real Lens episode from scratch, execute this exact 6-phase p
 ```
 
 1. **Phase 1 — Narrative & Scripting (`episode.js`):** Draft 25 scenes (~5:30–6:00 min) following Format B (Rules, Quantitative Math, Anomaly Cards, Cliffhangers).
-2. **Phase 2 — Voiceover & Sound Design (`generate_audio.js`):** Synthesize narration via `gemini-3.8-flash-tts` first (`voice: "Puck"`), wrap RIFF headers, normalize to `-18 LUFS`, mix procedural SFX/ambience with sidechain ducking, and output `timeline.json`.
-3. **Phase 3 — 2.5D Rigging & Scene Views (`core.js`, `views.js`, `index.html`):** Implement multi-plane Canvas2D scenes, dynamic DoF blur, volumetric cones, and HUD rule cards.
-4. **Phase 4 — Deterministic Video Render (`render_mp4.js`):** Step Puppeteer in frame batches (`24 FPS`) and stream into FFmpeg `image2pipe` + `master.wav`.
+2. **Phase 2 — Voiceover & Sound Design (`generate_audio.js`):** Synthesize narration via `gemini-3.8-flash-tts` first (`voice: "Puck"`), use SHA-256 audio cache, wrap RIFF headers, normalize to `-18 LUFS`, slice Thai subtitles ($< 36$ chars), mix procedural SFX/ambience with sidechain ducking, and output `timeline.json`.
+3. **Phase 3 — 2.5D Rigging & Scene Views (`core.js`, `views.js`, `index.html`):** Implement multi-plane Canvas2D scenes, 2-segment FK legs, hand sockets (`carry_bag`, `crouch_hold_item`, `two_hand_mop`), dynamic DoF blur, volumetric cones, and HUD rule cards.
+4. **Phase 4 — Deterministic Video Render (`render_mp4.js`):** Step Puppeteer in frame batches (`24/30 FPS`) and stream into FFmpeg `image2pipe` + `master.wav` (`-18 LUFS`).
 5. **Phase 5 — Long-Form YouTube Packaging (`generate_thumbnail.js`):** Render Showdown Split & 5-Panel thumbnails (`1920x1080`) + complete timestamps description.
 6. **Phase 6 — Vertical Shorts Multi-Episode Adaptation (`shorts/`):**
    - Generate 5 transparent HUD overlays (`generate_shorts_overlays.js`).
-   - Render 5 vertical `1080x1920` MP4s (`render_all_shorts.js`) with 3-layer composite.
+   - Render 5 vertical `1080x1920` MP4s (`render_all_shorts.js`) with 3-layer composite, Smart Center Zoom ($1.35\times$), mastered to `-14 LUFS`, respecting the $Y \le 1580\text{ px}$ Safe Zone.
    - Extract 5 real climax frames and render 5 scene-based vertical covers (`generate_scene_covers.js` + `make_covers.html`).
    - Write 5 viral Titles + 5-Part Captions ready for TikTok, Reels, and YouTube Shorts.

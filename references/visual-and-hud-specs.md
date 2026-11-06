@@ -196,3 +196,448 @@ Whenever any HUD card enters the frame:
 - **Position:** Bottom center (`y: 960` on `1920x1080` / `y: 650` on `1280x720`).
 - **Font Family:** `'Kanit'`, `'Prompt'`, or `'Leelawadee UI'`, Weight `700 (Bold)`.
 - **Styling:** Pure white `#FFFFFF` fill with `6px` black outer stroke (`#09090B`), subtle dark shadow (`rgba(0,0,0,0.85)` blur `8px`), chunked to `<= 36` Thai characters per cue synchronized to the speech narration.
+
+---
+
+## 5. Reference Implementation: Character Rigging, Walk Cycle & HUD Engine (`core.js`)
+
+Copy the complete reference implementation below into `core.js` for 2-segment articulated legs (`thigh` + `calf` + `planted shoe`), hand socket object manipulation, macro POV hands, and auto-fitting Canvas HUD cards:
+
+```javascript
+// ============================================================================
+// core.js - RealLens 2.5D Character Rigging, Walk Cycle & HUD Telemetry Engine
+// ============================================================================
+
+/**
+ * 1. วาดตัวละครเต็มตัวพร้อมระบบก้าวเดิน 2 ท่อน (FK Legs) และ Hand Socket จับวัตถุ
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Object} opts
+ */
+function drawRealLensActor(ctx, opts = {}) {
+  const {
+    x = 500,
+    y = 560,
+    t = 0,
+    scale = 1.0,
+    facing = 1,               // 1 = หันขวา, -1 = หันซ้าย
+    isEntity = false,         // false = ผู้รอดชีวิต, true = พนักงานไร้หน้า
+    posture = 'walk',         // 'walk' | 'sneak' | 'idle_inspect' | 'crouch_hold' | 'hide_breath' | 'entity_mop'
+    handAction = 'none',      // 'none' | 'carry_bag' | 'crouch_hold_item' | 'hand_to_face' | 'two_hand_mop'
+    expr = 'calm'             // 'calm' | 'worried' | 'shock' | 'bleeding_eyes'
+  } = opts;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(facing * scale, scale);
+
+  // --- คำนวณพารามิเตอร์จังหวะก้าวเดิน (Locomotion Kinematics) ---
+  let freq = 5.2;
+  let strideAmp = 0.42;
+  let kneeAmp = 0.58;
+  let torsoLean = 0.04;
+  let headPitch = 0.02;
+  let crouchOffsetY = 0;
+
+  if (posture === 'sneak') {
+    freq = 3.2;
+    strideAmp = 0.28;
+    kneeAmp = 0.65;
+    torsoLean = 0.12;
+    headPitch = 0.10;
+  } else if (posture === 'idle_inspect' || posture === 'hide_breath') {
+    freq = 1.5;
+    strideAmp = 0.0;
+    kneeAmp = 0.0;
+    torsoLean = posture === 'idle_inspect' ? 0.06 : 0.02;
+    headPitch = posture === 'idle_inspect' ? 0.14 : 0.0;
+  } else if (posture === 'crouch_hold') {
+    freq = 1.2;
+    strideAmp = 0.0;
+    kneeAmp = 0.0;
+    torsoLean = 0.18;
+    headPitch = 0.16;
+    crouchOffsetY = 48;
+  } else if (posture === 'entity_mop') {
+    freq = 2.6;
+    strideAmp = 0.24;
+    kneeAmp = 0.35;
+    torsoLean = 0.08;
+    headPitch = 0.05;
+  }
+
+  const phase = t * freq;
+  const pelvisBob = strideAmp > 0 ? -Math.abs(Math.sin(phase)) * 3.5 : Math.sin(t * 2) * 1.2;
+  const hipX = 0;
+  const hipY = -92 + pelvisBob + crouchOffsetY;
+
+  // --- ฟังก์ชันย่อยวาดขา 2 ท่อน (ต้นขา + หน้าแข้ง + รองเท้า) ---
+  function drawArticulatedLeg(legPhase, isNearLeg) {
+    const thighLen = 46;
+    const calfLen = 44;
+
+    let thighAngle = 0;
+    let kneeAngle = 0;
+
+    if (posture === 'crouch_hold') {
+      thighAngle = isNearLeg ? -0.95 : -0.82;
+      kneeAngle = isNearLeg ? 1.55 : 1.42;
+    } else if (strideAmp === 0) {
+      thighAngle = isNearLeg ? -0.05 : 0.06;
+      kneeAngle = 0.03;
+    } else {
+      thighAngle = Math.sin(legPhase) * strideAmp;
+      // พับเข่าเฉพาะจังหวะยกเท้าพ้นพื้น (Asymmetric Knee Flexion)
+      kneeAngle = Math.max(0, -Math.cos(legPhase)) * kneeAmp;
+    }
+
+    const kneeX = hipX - Math.sin(thighAngle) * thighLen;
+    const kneeY = hipY + Math.cos(thighAngle) * thighLen;
+
+    const totalCalfAngle = thighAngle - kneeAngle;
+    const ankleX = kneeX - Math.sin(totalCalfAngle) * calfLen;
+    const ankleY = kneeY + Math.cos(totalCalfAngle) * calfLen;
+
+    // วาดกางเกง (ขาด้านในสีเข้มกว่าขาด้านนอก)
+    ctx.strokeStyle = isNearLeg ? '#1E293B' : '#0F172A';
+    ctx.lineWidth = 18;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(hipX, hipY);
+    ctx.lineTo(kneeX, kneeY);
+    ctx.lineTo(ankleX, ankleY);
+    ctx.stroke();
+
+    // วาดรองเท้าขนานพื้น (Planted Shoe Damping)
+    ctx.save();
+    ctx.translate(ankleX, ankleY);
+    const footAngle = Math.max(-0.18, Math.min(0.22, -totalCalfAngle * 0.35));
+    ctx.rotate(footAngle);
+
+    ctx.fillStyle = '#09090B';
+    ctx.beginPath();
+    ctx.roundRect(-10, -4, 28, 12, [4, 8, 3, 3]);
+    ctx.fill();
+
+    // พื้นรองเท้าสีเทา
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(-10, 5, 28, 3);
+    ctx.restore();
+  }
+
+  // 1. วาดขาด้านหลัง (Far Leg)
+  drawArticulatedLeg(phase + Math.PI, false);
+
+  // --- คำนวณจุดหมุนลำตัวและไหล่ ---
+  ctx.save();
+  ctx.translate(hipX, hipY);
+  ctx.rotate(torsoLean);
+
+  const shoulderX = 2;
+  const shoulderY = -58;
+
+  // --- ฟังก์ชันย่อยวาดแขน 2 ท่อน และคืนค่าพิกัดข้อมือ (Hand Socket) ---
+  function drawArticulatedArm(isNearArm) {
+    const upperLen = 34;
+    const lowerLen = 32;
+    let shoulderAngle = 0;
+    let elbowAngle = 0.25;
+
+    const armPhase = isNearArm ? phase + Math.PI : phase;
+
+    if (handAction === 'two_hand_mop') {
+      shoulderAngle = isNearArm ? -0.58 : -0.78;
+      elbowAngle = isNearArm ? 0.52 : 0.35;
+    } else if (handAction === 'crouch_hold_item' && isNearArm) {
+      shoulderAngle = -0.65;
+      elbowAngle = 1.15;
+    } else if (handAction === 'hand_to_face' && isNearArm) {
+      shoulderAngle = -0.85;
+      elbowAngle = 1.95;
+    } else if (handAction === 'carry_bag' && isNearArm) {
+      // แขนข้างที่หิ้วถุงแกว่งน้อยลงครึ่งหนึ่งเพื่อสื่อถึงน้ำหนักถุง
+      shoulderAngle = Math.sin(armPhase) * (strideAmp * 0.45) - 0.08;
+      elbowAngle = 0.38;
+    } else {
+      shoulderAngle = Math.sin(armPhase) * (strideAmp * 0.85);
+      elbowAngle = 0.22 + Math.max(0, Math.sin(armPhase)) * 0.25;
+    }
+
+    const elbowX = shoulderX - Math.sin(shoulderAngle) * upperLen;
+    const elbowY = shoulderY + Math.cos(shoulderAngle) * upperLen;
+
+    const forearmAngle = shoulderAngle + elbowAngle;
+    const handX = elbowX + Math.sin(forearmAngle) * lowerLen;
+    const handY = elbowY + Math.cos(forearmAngle) * lowerLen;
+
+    // เสื้อแขนยาว
+    ctx.strokeStyle = isEntity
+      ? (isNearArm ? '#334155' : '#1E293B')
+      : (isNearArm ? '#3B4252' : '#2E3440');
+    ctx.lineWidth = 14;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.lineTo(elbowX, elbowY);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+
+    // ฝ่ามือ
+    ctx.fillStyle = isEntity ? '#CBD5E1' : '#E2B897';
+    ctx.beginPath();
+    ctx.arc(handX, handY, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    return { handX, handY, forearmAngle };
+  }
+
+  // 2. วาดแขนด้านหลัง (Far Arm)
+  const farHand = drawArticulatedArm(false);
+
+  // 3. วาดลำตัวและกล้ามเนื้อบ่า (Trapezius & Torso)
+  ctx.fillStyle = isEntity ? '#CBD5E1' : '#E2B897';
+  ctx.beginPath();
+  ctx.moveTo(-8, shoulderY - 14);
+  ctx.lineTo(10, shoulderY - 14);
+  ctx.lineTo(14, shoulderY + 4);
+  ctx.lineTo(-12, shoulderY + 4);
+  ctx.closePath();
+  ctx.fill();
+
+  // เสื้อฮู้ดผู้รอดชีวิต หรือ ชุดหมีพนักงานทำความสะอาด
+  ctx.fillStyle = isEntity ? '#334155' : '#3B4252';
+  ctx.beginPath();
+  ctx.roundRect(-18, shoulderY - 4, 36, 66, [12, 12, 6, 6]);
+  ctx.fill();
+
+  // 4. วาดศีรษะและใบหน้า
+  ctx.save();
+  ctx.translate(2, shoulderY - 26);
+  ctx.rotate(headPitch);
+
+  // โครงหน้า
+  ctx.fillStyle = isEntity ? '#E2E8F0' : '#E2B897';
+  ctx.beginPath();
+  ctx.arc(0, 0, 19, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (!isEntity) {
+    // ทรงผมสีดำเข้ม
+    ctx.fillStyle = '#0F172A';
+    ctx.beginPath();
+    ctx.arc(-2, -4, 20, Math.PI * 0.85, Math.PI * 2.15);
+    ctx.fill();
+
+    // ถุงใต้ตาและดวงตา
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(8, 1, 4, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+
+    ctx.fillStyle = '#0F172A';
+    ctx.beginPath();
+    ctx.arc(8, -2, expr === 'shock' ? 3.2 : 2.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // เลือดไหลจากตา (กรณี expr === 'bleeding_eyes')
+    if (expr === 'bleeding_eyes') {
+      ctx.fillStyle = '#DC2626';
+      ctx.fillRect(7, 1, 2.5, 10);
+    }
+
+    // คิ้วและปากตามอารมณ์
+    ctx.strokeStyle = '#0F172A';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (expr === 'worried' || expr === 'shock') {
+      ctx.moveTo(3, -9);
+      ctx.lineTo(12, -6);
+    } else {
+      ctx.moveTo(4, -7);
+      ctx.lineTo(12, -7);
+    }
+    ctx.stroke();
+  } else {
+    // พนักงานไร้หน้า: มีเฉพาะรอยบุ๋มเงามืดจางๆ
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.18)';
+    ctx.beginPath();
+    ctx.ellipse(7, -1, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore(); // จบส่วนศีรษะ
+
+  ctx.restore(); // จบการหมุนลำตัว (กลับสู่พิกัดสะโพก)
+
+  // 5. วาดขาด้านหน้า (Near Leg)
+  drawArticulatedLeg(phase, true);
+
+  // 6. วาดแขนด้านหน้า (Near Arm) และวัตถุในมือ (Hand Socket Props)
+  ctx.save();
+  ctx.translate(hipX, hipY);
+  ctx.rotate(torsoLean);
+  const nearHand = drawArticulatedArm(true);
+
+  // --- วาดวัตถุที่ผูกกับพิกัดมือ (Full-Body Hand Sockets) ---
+  if (handAction === 'carry_bag') {
+    // ถุงพลาสติกสีขาวแกว่งแบบ Pendulum Lag
+    const bagLag = Math.sin(phase - 0.6) * 0.18 - torsoLean;
+    ctx.save();
+    ctx.translate(nearHand.handX, nearHand.handY);
+    ctx.rotate(bagLag);
+
+    ctx.strokeStyle = 'rgba(241, 245, 249, 0.9)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 8, 7, Math.PI, 0);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(226, 232, 240, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect(-12, 8, 24, 28, 6);
+    ctx.fill();
+    ctx.restore();
+  } else if (handAction === 'crouch_hold_item') {
+    // ประคองกล่องนมสีฟ้า-ขาวในท่านั่งยอง
+    ctx.save();
+    ctx.translate(nearHand.handX + 4, nearHand.handY - 6);
+    ctx.fillStyle = '#F8FAFC';
+    ctx.fillRect(-7, -12, 14, 22);
+    ctx.fillStyle = '#0284C7';
+    ctx.fillRect(-7, -4, 14, 8);
+    ctx.restore();
+  } else if (handAction === 'two_hand_mop') {
+    // ด้ามไม้ถูพื้นลากผ่านมือทั้งสองข้าง พร้อมถังน้ำสีเหลือง
+    const angle = Math.atan2(
+      nearHand.handY - farHand.handY + 28,
+      nearHand.handX - farHand.handX + 26
+    );
+    ctx.save();
+    ctx.translate(farHand.handX, farHand.handY);
+    ctx.rotate(angle);
+
+    ctx.strokeStyle = '#D4A373';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-25, 0);
+    ctx.lineTo(95, 0);
+    ctx.stroke();
+
+    // หัวม็อบถูพื้น
+    ctx.fillStyle = '#94A3B8';
+    ctx.beginPath();
+    ctx.roundRect(90, -10, 14, 20, 4);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+  ctx.restore();
+}
+
+/**
+ * 2. วาดฉากโคลสอัพมือและท่อนแขน (Macro POV Hand & Forearm Rig)
+ * ใช้สำหรับฉากแปะเทปกาวบนพื้น, เขียนตัวเลขด้วยปากกาเมจิก, และวาดแผนที่โซน
+ */
+function drawMacroHandRig(ctx, handX, handY, toolType = 'marker_pen', angle = 0.42) {
+  ctx.save();
+  ctx.translate(handX, handY);
+  ctx.rotate(angle);
+
+  // ท่อนแขนเสื้อฮู้ดและข้อมือ
+  ctx.fillStyle = '#3B4252';
+  ctx.beginPath();
+  ctx.roundRect(-28, 35, 56, 140, 16);
+  ctx.fill();
+
+  // หลังมือและนิ้วมน 4 นิ้ว
+  ctx.fillStyle = '#E2B897';
+  ctx.beginPath();
+  ctx.roundRect(-24, -18, 48, 58, 18);
+  ctx.fill();
+
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.roundRect(-21 + i * 11, -34, 9.5, 22, 5);
+    ctx.fill();
+  }
+
+  // อุปกรณ์ในมือ
+  if (toolType === 'marker_pen') {
+    ctx.save();
+    ctx.rotate(-0.35);
+    ctx.fillStyle = '#09090B';
+    ctx.fillRect(-6, -65, 12, 58);
+    ctx.fillStyle = '#EF4444';
+    ctx.fillRect(-6, -50, 12, 8);
+    ctx.restore();
+  } else if (toolType === 'tape_roll') {
+    ctx.strokeStyle = '#F1F5F9';
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.arc(0, -32, 26, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (toolType === 'wooden_pencil') {
+    ctx.save();
+    ctx.rotate(-0.28);
+    ctx.fillStyle = '#F59E0B';
+    ctx.fillRect(-4, -70, 8, 62);
+    ctx.fillStyle = '#FDE68A';
+    ctx.beginPath();
+    ctx.moveTo(-4, -70);
+    ctx.lineTo(4, -70);
+    ctx.lineTo(0, -82);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+/**
+ * 3. วาดการ์ดข้อมูล HUD ปรับขนาดฟอนต์อัตโนมัติไม่ให้ล้นกรอบ (Auto-Fit HUD Card)
+ */
+function drawAutoFitHudCard(ctx, { x, y, w, h, title, value, subtext, accent = '#10B981' }) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 10);
+  ctx.fill();
+  ctx.stroke();
+
+  // แถบสีด้านซ้าย
+  ctx.fillStyle = accent;
+  ctx.fillRect(x, y + 10, 4, h - 20);
+
+  // หัวข้อการ์ด
+  ctx.fillStyle = '#94A3B8';
+  ctx.font = '500 18px "Kanit", sans-serif';
+  ctx.fillText(title, x + 18, y + 32);
+
+  // ปรับขนาดฟอนต์ค่าหลักอัตโนมัติหากข้อความยาวเกินกรอบ
+  let fontSize = 34;
+  ctx.font = `700 ${fontSize}px "Kanit", monospace`;
+  while (ctx.measureText(value).width > w - 36 && fontSize > 16) {
+    fontSize -= 2;
+    ctx.font = `700 ${fontSize}px "Kanit", monospace`;
+  }
+  ctx.fillStyle = '#F8FAFC';
+  ctx.fillText(value, x + 18, y + 74);
+
+  if (subtext) {
+    ctx.fillStyle = accent;
+    ctx.font = '400 15px "Kanit", sans-serif';
+    ctx.fillText(subtext, x + 18, y + h - 16);
+  }
+  ctx.restore();
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { drawRealLensActor, drawMacroHandRig, drawAutoFitHudCard };
+}
+```

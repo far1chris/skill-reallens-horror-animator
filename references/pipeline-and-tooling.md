@@ -136,6 +136,72 @@ Synthesize deterministic 44.1 kHz Float32 PCM cues and mix with voiceover sidech
 - **`distance_sonar`:** Short high-pitched tick/ping with stereo delay when the Distance Tracker Pill drops closer to the protagonist.
 - **`ui_pop`:** Crisp high chime (`880Hz` sine ping with 30ms decay) whenever a HUD rule or math card scales into view.
 
+### 2.4 SHA-256 Audio Cache & Proportional Thai Subtitles (`generate_audio.js` Helper)
+
+To prevent redundant API consumption and quota burnout, always wrap TTS generation with SHA-256 hashed disk caching (`audio/cache/<hash>.wav`). For subtitles, slice Thai lines at natural boundaries under 36 characters and synchronize timestamps proportionally to character length:
+
+```javascript
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * สร้างหรือดึงไฟล์เสียงจาก SHA-256 Cache
+ */
+async function getOrGenerateSceneAudio(sceneId, text, ttsGeneratorFn) {
+  const cacheDir = path.join(__dirname, 'audio', 'cache');
+  fs.mkdirSync(cacheDir, { recursive: true });
+
+  const hash = crypto.createHash('sha256').update(text.trim()).digest('hex').slice(0, 16);
+  const cachedPath = path.join(cacheDir, `scene_${sceneId}_${hash}.wav`);
+
+  if (fs.existsSync(cachedPath)) {
+    console.log(`[CACHE HIT] Scene ${sceneId} -> ${path.basename(cachedPath)}`);
+    return cachedPath;
+  }
+
+  console.log(`[TTS API] Generating audio for Scene ${sceneId}...`);
+  const wavBuffer = await ttsGeneratorFn(text);
+  fs.writeFileSync(cachedPath, wavBuffer);
+  return cachedPath;
+}
+
+/**
+ * ตัดประโยคภาษาไทยไม่ให้เกิน maxChars และคำนวณเวลาเริ่มต้น-สิ้นสุดตามสัดส่วนความยาวจริง
+ */
+function sliceThaiSubtitlesProportionally(fullText, totalDurationSec, maxChars = 36) {
+  const tokens = fullText.split(/\s+/).filter(Boolean);
+  const chunks = [];
+  let current = '';
+
+  for (const token of tokens) {
+    if ((current + ' ' + token).trim().length <= maxChars) {
+      current = (current + ' ' + token).trim();
+    } else {
+      if (current) chunks.push(current);
+      current = token;
+    }
+  }
+  if (current) chunks.push(current);
+
+  const totalChars = chunks.reduce((sum, c) => sum + c.length, 0) || 1;
+  let elapsed = 0;
+
+  return chunks.map((text) => {
+    const duration = (text.length / totalChars) * totalDurationSec;
+    const item = {
+      text,
+      start: Number(elapsed.toFixed(2)),
+      end: Number((elapsed + duration).toFixed(2))
+    };
+    elapsed += duration;
+    return item;
+  });
+}
+
+module.exports = { getOrGenerateSceneAudio, sliceThaiSubtitlesProportionally };
+```
+
 ---
 
 ## 3. Core HTML5 Canvas 2.5D Architecture & Deterministic MP4 Export
@@ -171,3 +237,16 @@ ffmpeg -y -f image2pipe -vcodec mjpeg -r 24 -i - -i audio/master.wav \
   -c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 192k \
   -shortest -movflags +faststart output.mp4
 ```
+
+---
+
+## 4. Rendering Standards & QA Gate Protocols
+
+| Render Target | Resolution | Frame Rate | EBU R128 Loudness | Visual & Composition Rules |
+| :--- | :--- | :--- | :--- | :--- |
+| **Master 16:9** (`render_mp4.js`) | `1920x1080` | `24` or `30 fps` | `loudnorm=I=-18:TP=-1.5:LRA=11` | Full landscape view with 4 depth planes, volumetric lighting, and centered HUD cards. |
+| **Shorts 9:16** (`render_all_shorts.js`) | `1080x1920` | `30 fps` | `loudnorm=I=-14:TP=-1.0:LRA=9` | **Smart Center Zoom ($1.35\times$)** on protagonist/entity action, blurred dynamic backdrop, and **Safe Zone Check**. |
+
+### Safe Zone Check for Vertical Shorts:
+- **Bottom Clearance:** Never position Thai burned-in subtitles below $Y = 1580\text{ px}$.
+- **Right Margin Clearance:** Keep interactive HUD text and telemetry at least $140\text{ px}$ away from the right screen edge to avoid collision with TikTok, Instagram Reels, and YouTube Shorts action buttons (Like, Comment, Share, Audio Disc).

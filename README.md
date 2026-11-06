@@ -12,12 +12,14 @@ An end-to-end production workflow and programmatic 2D/2.5D vector animation syst
 Unlike static AI slideshows or generic comic recap videos, this skill encodes the complete pipeline to produce deterministic, procedural 2D flat-vector paper-cutout animations with 2.5D depth-of-field, volumetric lighting cones, scientific/rules-of-survival HUD overlays, calculated quantitative math, and deadpan first-person narration.
 
 ### Key Capabilities:
-- **Authentic 2.5D Vector Rigging:** Lineless flat-shaded vector rigs with cylindrical horizontal gradients, solid black bead eyes with under-eye fatigue crescent bags, natural joint articulation, and terrifying 2-state horror reveals (e.g. The Cleaner with dripping blood eye slits).
-- **Dynamic HUD & Quantitative Survival System:** Real Lens signature Survival Rule cards (`⚠️ กฎข้อ 1–5`), real-time telemetry pills, live distance proximity trackers (`40 ม.` → `2 ม.`), resource audits, food expiration validation (calendar paradoxes), calorie burn calculations, and modular arithmetic exit formulas (`mod 12`).
-- **Unified Voiceover & Sound Protocol:** Strict TTS synthesis prioritizing `gemini-3.8-flash-tts` (`Puck` voice), EBU R128 loudness normalization (`-18 LUFS`), and procedural audio ducking with liminal drone foley.
+- **Authentic 2.5D Vector Rigging & 2-Segment FK Walk Cycle:** Lineless flat-shaded vector rigs with cylindrical horizontal gradients, 2-segment articulated legs (`thigh` + `calf` + `planted shoe` ground damping), solid black bead eyes with under-eye fatigue crescent bags, natural joint articulation, and terrifying 2-state horror reveals (e.g. The Cleaner with dripping blood eye slits).
+- **Dual-System Object Manipulation:** Full-body wrist sockets (`carry_bag` with pendulum lag, `crouch_hold_item`, `two_hand_mop` cart) and Macro POV hand rigs (`marker_pen`, `tape_roll`, `wooden_pencil`) for close-up survival actions.
+- **Dynamic HUD & Quantitative Survival System:** Real Lens signature Survival Rule cards (`⚠️ กฎข้อ 1–5`), auto-fit font scaling algorithm, real-time telemetry pills, live distance proximity trackers (`40 ม.` → `2 ม.`), resource audits, food expiration validation (calendar paradoxes), calorie burn calculations, and modular arithmetic exit formulas (`mod 12`).
+- **Multi-Theme Presets:** Ready-to-use color tokens, telemetry specs, and entity behaviors for (A) Liminal Mall / Backrooms, (B) Calculated Disaster (Sub-zero freeze), and (C) Night Shift Rules.
+- **Unified Voiceover, SHA-256 Cache & Proportional Subtitles:** Strict TTS synthesis prioritizing `gemini-3.8-flash-tts` (`Puck` voice), SHA-256 disk audio caching (`audio/cache/<hash>.wav`), Thai subtitle chunking ($\le 36$ chars) with proportional timing, EBU R128 loudness normalization (`-18 LUFS`), and procedural audio ducking with liminal drone foley.
 - **Deterministic MP4 Rendering:** High-performance HTML5 Canvas animation driven frame-by-frame via Puppeteer into FFmpeg `image2pipe`.
 - **Packaging & Showdown Thumbnails:** Proven high-CTR YouTube thumbnails (Showdown Split: The Cleaner vs. Protagonist crouching in shock, Rule Card, Telemetry & Distance Pill, Giant glowing title + yellow quote).
-- **Vertical Shorts Adaptation (9:16):** Automated splitting of master videos into 5 cliffhanger vertical episodes (`EP 1` – `EP 5`) with 3-layer compositing, real climax frame scene covers, and viral copy packages.
+- **Vertical Shorts Adaptation (9:16):** Automated splitting of master videos into 5 cliffhanger vertical episodes (`EP 1` – `EP 5`) with Smart Center Zoom ($1.35\times$), Safe Zone compliance ($Y \le 1580\text{ px}$), 3-layer compositing, real climax frame scene covers, and viral copy packages.
 
 ---
 
