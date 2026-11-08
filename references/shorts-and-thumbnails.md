@@ -66,12 +66,63 @@ For a 5:30–6:00 minute master video, split into **5 high-retention vertical ep
 
 ---
 
-### 2.2 Three-Layer FFmpeg Vertical Composite (`render_all_shorts.js`)
+### 2.2 Three-Layer FFmpeg Vertical Composite (`render_all_shorts.js`) & Minimalist Overlay (`generate_shorts_overlays.js`)
 
 Composite 3 layers via FFmpeg:
 1. **Layer 0 (Background):** `master_16x9.mp4` scaled to `1080x1920`, cropped, blurred (`boxblur=22:5`), and darkened (`brightness=-0.16`).
 2. **Layer 1 (Foreground Center):** `master_16x9.mp4` scaled to `1080x608` with `lanczos`, centered at `y: 576`.
-3. **Layer 2 (Transparent Overlay):** `overlay_epX.png` rendered at `1080x1920` in Puppeteer.
+3. **Layer 2 (Transparent Overlay — `overlay_epX.png`):** Rendered at `1080x1920` in Puppeteer with **ONLY the Video Title and Red EP Pill at the top**:
+   - ✅ **Top Title (`y: 295`):** Bold white series title (`Kanit 900 54px`, red glow), e.g., `9 คืน อาถรรพ์ "ตลาดน้ำร้าง"`.
+   - ✅ **Red EP Pill (`y: 335, h: 52`):** Single red rounded pill (`#DC2626`) with white text (`Kanit 700 25px`), e.g., `EP 1: กฎข้อ 1 ธูปดำบังตา & เรือพายตอนตี 3`.
+   - ❌ **STRICTLY PROHIBITED ON `overlay_epX.png`:**
+     - **ห้ามใส่ข้อความหมวดหมู่สีเหลืองเหนือชื่อคลิป** (เช่น `REAL LENS SURVIVAL ARCHIVE...`)
+     - **ห้ามใส่แถบป้ายสีเข้มแถวที่สองใต้แถบสีแดง EP**
+     - **ห้ามใส่กล่องข้อความสีครีมหรือการ์ดสรุปกฎด้านล่างของจอเด็ดขาด!** (ปล่อยพื้นที่ด้านล่าง `y: 1184..1920` ให้โล่งสะอาด มีเพียงเกรเดียนต์มืดจางๆ เท่านั้น)
+
+```javascript
+// Minimalist renderOverlay(data) inside generate_shorts_overlays.js:
+window.renderOverlay = function(data) {
+  const cvs = document.getElementById('c');
+  const ctx = cvs.getContext('2d');
+  const W = 1080, H = 1920;
+  ctx.clearRect(0, 0, W, H);
+
+  // Top & Bottom subtle dark gradients (NO bottom card or text box!)
+  const topGrad = ctx.createLinearGradient(0, 0, 0, 540);
+  topGrad.addColorStop(0, 'rgba(6, 11, 20, 0.96)');
+  topGrad.addColorStop(0.75, 'rgba(8, 14, 27, 0.85)');
+  topGrad.addColorStop(1, 'rgba(8, 14, 27, 0)');
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, W, 540);
+
+  const btmGrad = ctx.createLinearGradient(0, 1184, 0, H);
+  btmGrad.addColorStop(0, 'rgba(6, 11, 20, 0)');
+  btmGrad.addColorStop(0.35, 'rgba(8, 14, 27, 0.85)');
+  btmGrad.addColorStop(1, 'rgba(6, 11, 20, 0.96)');
+  ctx.fillStyle = btmGrad;
+  ctx.fillRect(0, 1184, W, H - 1184);
+
+  const cx = W / 2;
+
+  // 1. Video Title ONLY (no yellow header above it)
+  ctx.textAlign = 'center';
+  ctx.font = '900 56px "Kanit", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(220, 38, 38, 0.85)';
+  ctx.shadowBlur = 18;
+  ctx.fillText(data.title, cx, 305);
+  ctx.shadowBlur = 0;
+
+  // 2. Red EP Pill ONLY (no second status pill below it, no bottom box!)
+  ctx.fillStyle = '#dc2626';
+  ctx.beginPath();
+  ctx.roundRect(cx - 390, 345, 780, 54, 27);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 25px "Kanit", sans-serif';
+  ctx.fillText(data.badge, cx, 381);
+};
+```
 
 ```javascript
 execFileSync(ffmpeg, [
@@ -98,23 +149,16 @@ execFileSync(ffmpeg, [
 ## 3. Scene-Based Vertical Shorts Cover Generator (`1080x1920`, `9:16`)
 
 ### 3.1 Extracting Actual Climax Frames
-Always extract the authentic climax moment from the episode:
-- **EP 1 Climax:** Turning past pillar C-13 into infinite fluorescent corridor (`0:45`).
-- **EP 2 Climax:** Circular sector dial rotating with sound of metal grinding (`1:25`).
-- **EP 3 Climax:** Looking at product expiry label `"EXP 31/02/2026"` (`2:05`).
-- **EP 4 Climax:** Face-to-face with The Cleaner, dripping blood eyes, distance `2 ม.` (`2:55`).
-- **EP 5 Climax:** Looking at mysterious duct tape on pillar C-12: `"วันที่ 8"` (`5:15`).
+Always extract the authentic climax moment from each episode (`ffmpeg -ss <t> -i master.mp4 -frames:v 1`).
 
-### 3.2 Layout Specs for Shorts Covers (`1080x1920`)
-- **Top Hook Headline (`y: 175` & `y: 325`):**
-  - Line 1: Pure White (`Kanit 800 82px`, e.g., `ติดอยู่ในห้างร้าง` / `ตี 3 ไฟดับทั้งห้าง`).
-  - Line 2: Giant Blood Red (`Kanit 900 156px`, `#DC2626` with `8px` black outer stroke + red glow, e.g., `อย่าเหยียบพื้น!` / `ภารโรงไร้หน้า`).
-- **Center Hero Card (`x: 30, y: 460, w: 1020, h: 574`):**
-  - Clipped video frame inside a `22px` rounded card with `5px` glowing yellow/red border (`#EAB308` or `#EF4444`).
-  - **Volumetric Flashlight Beam:** Radial beam pointing at the crucial survival clue or entity.
-- **Comic Speech Bubble (`y: 1144`):**
-  - White rounded pill (`#FFFFFF`) with pointer tail: `"อย่าก้าวลงบนพื้นที่เพิ่งถูกถูเด็ดขาด!"` or `"ลายมือนี้... มันลายมือผมเอง?!"`.
-- **Bottom Episode Stamp (`y: 1770`):**
+### 3.2 Layout Specs for Shorts Covers (`1080x1920`) — Clean Title + EP Only (No Bottom Text Box!)
+- **Top Hook Headline (`y: 220` & `y: 365`):**
+  - Line 1 (Series / Hook Title): Pure White (`Kanit 800 76px`).
+  - Line 2 (Key Highlight): Giant Blood Red (`Kanit 900 140px`, `#DC2626` with `7px` black outer stroke + red glow).
+- **Center Hero Card (`x: 30, y: 480, w: 1020, h: 574`):**
+  - Clipped video frame inside a `22px` rounded card with `5px` glowing yellow/red border (`#EAB308` or `#EF4444`) and subtle volumetric spotlight beam.
+- **NO Bottom Speech Bubble or Text Box:** Do NOT render any comic speech bubble or text box below the center hero frame.
+- **Bottom Episode Stamp (`y: 1380`):**
   - Giant `Kanit 900 145px`: Pure white `"EP "` + crimson red `"1"`..`"5"`.
 
 ---

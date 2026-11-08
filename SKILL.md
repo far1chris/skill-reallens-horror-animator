@@ -34,139 +34,92 @@ export GEMINI_API_KEY="your-api-key"
 
 ## 2. Visual DNA & Art Direction ("2.5D Geometric Paper-Cutout Survival Horror")
 
-### 2.1 Character Construction (Authentic Real Lens Vector Rig)
-Characters are built from clean geometric Canvas2D/SVG primitives with **no heavy black outlines** (lineless flat shading with cylindrical horizontal gradients):
-- **Head & Face (Strict Real Lens Standard):**
-  - Smooth oval capsule/dome shape (`#D49B66` → `#C0824D` for human skin; `#EAECEF` → `#CFD4DC` for pale entities).
-  - **Eyes:** Solid minimalist black bead eyes (`#18181B` ellipse). **STRICTLY PROHIBITED:** White anime eye sclera, specular catchlight dots, and thick cartoon V-eyebrows!
-  - **Under-Eye Fatigue Bags:** Subtle soft dark crescent shadows (`rgba(110, 48, 16, 0.32)`) curved directly under each eye, conveying authentic survival exhaustion, lack of sleep, and psychological dread.
-  - **Mouth & Nose:** Clean horizontal dark slit line (`#27272A`) for a calm, stoic, focused survival expression; transitions to a small circular open mouth (`o` shape) during sudden shocks, gasps, or near-death close encounters. Flat face (no harsh triangular cartoon nose wedge).
-  - **Hair:** Clean rounded black skullcap (`#18181B`) with a smooth side-part fringe wave sweeping across the forehead from right to left, and neat sideburns down to ear level.
-- **Protagonist Attire ("ต้น" / Everyday Civilian Standard):**
-  - Striped or muted casual wear: Light blue-and-white horizontal striped t-shirt (`#7DD3FC` and `#F8FAFC` alternating bands), dark navy/grey straight-cut trousers (`#1E293B`), and dark rubber-soled walking shoes.
-  - Carrying items: White plastic grocery shopping bag in early scenes; forearm wrapped in beige cloth duct tape strips marked with black ink codes (`[A → 4]`, `[K → 1]`, `[P → 9]`) in mid-to-late survival scenes.
-- **Entity Construction ("พนักงานทำความสะอาดไร้หน้า / The Faceless Cleaner"):**
-  - **Uniform:** Dark slate-grey service uniform and trousers (`#334155` → `#1E293B`), peaked service flat cap (`#475569`).
-  - **Head & Mask:** Bloodless smooth white oval head (`#F1F5F9` → `#CBD5E1`).
-  - **The Reveal (Image 3 Reference):** Two vertical black hollow eye slits with dark crimson / blood trails dripping down (`#8B0000`). No mouth or nose.
-  - **Equipment:** Vintage commercial yellow mop bucket with squeezer cart (`#EAB308`), long natural wood mop pole (`#D4A373`), and damp mop head creating reflective wet tile streaks.
-  - **Movement:** Rigid, slow, unhurried mechanical stride (e.g., `y` bobbing `Math.sin(t * 4) * 2px`, mop swaying synchronously).
-- **2-Segment Articulated FK Locomotion (`core.js`):**
-  - Driven by `drawArticulatedLeg`: `thigh` (46px) + `calf` (44px) + `planted shoe` (-10px to +18px with ground damping).
-  - Supported posture kinematics:
-    - `'walk'`: `freq: 5.2, strideAmp: 0.42, kneeAmp: 0.58, torsoLean: 0.04`
-    - `'sneak'`: `freq: 3.2, strideAmp: 0.28, kneeAmp: 0.65, torsoLean: 0.12, headPitch: 0.10`
-    - `'idle_inspect'` / `'hide_breath'`: `freq: 1.5, strideAmp: 0.0, kneeAmp: 0.0`
-    - `'crouch_hold'`: `freq: 1.2, crouchOffsetY: 48, torsoLean: 0.18, headPitch: 0.16`
-    - `'entity_mop'`: `freq: 2.6, strideAmp: 0.24, kneeAmp: 0.35, torsoLean: 0.08`
-- **Dual-System Hand Rigging & Object Manipulation:**
-  - **Full-Body Hand Sockets:** Attached to wrist coordinates (`handX`, `handY`) with natural pendulum lag:
-    - `'carry_bag'`: White plastic bag swinging with pendulum lag.
-    - `'crouch_hold_item'`: Holding blue/white milk carton in crouch.
-    - `'two_hand_mop'`: Two-handed mop pole grip with angled yellow bucket cart.
-  - **Macro POV Hand Rig (`drawMacroHandRig`):** Close-up 4-finger hand for:
-    - `'marker_pen'`: Writing tape codes or math on walls.
-    - `'tape_roll'`: Applying duct tape arrows to floors.
-    - `'wooden_pencil'`: Sketching sector rotation maps.
+> ### ⚠️ GOLDEN RULE: แยกแยะ "สไตล์ภาพ (Visual Art Style)" ออกจาก "การเล่าเรื่องและมุมกล้อง (Narrative & Camera Direction)"
+> ต้นฉบับ **`backrooms-mall-7days` (`8DT1Q3NAgaA`)** คือ **มาตรฐานของสไตล์งานภาพและเอนจินการวาด (Visual & Rigging Engine)** เท่านั้น **ห้ามลอกโครงเรื่อง ฉาก หรือมุมกล้องเฉพาะของเรื่องห้างสรรพสินค้าไปใส่ในเนื้อเรื่องอื่นเด็ดขาด!**
+>
+> | สิ่งที่ต้องใช้ตามมาตรฐาน `backrooms-mall-7days` 100% (Visual DNA) | สิ่งที่ต้องออกแบบใหม่ตามบริบทของเรื่องนั้นๆ เสมอ (Story-Driven Direction) |
+> | :--- | :--- |
+> | • **เชดเดอร์และสัดส่วน 2.5D (`core.js`):** การไล่แสงทรงกระบอก `cyl()`, รูปทรงแคปซูล `rr()`, สัดส่วนมนุษย์ `1:6.5` (`drawPerson`, `drawJanitor`), แขนขา 2 ท่อน (`poseWalk`, `poseStand`, `poseKneel`, `poseSit`), และท่อนแขน POV ยาว `400px` ที่ยื่นจากขอบจอ (`hand()`)<br>• **ระบบแสงและบรรยากาศ:** โทนสีกลางคืนที่มองเห็นรายละเอียดชัดเจน (`#283040` / `#162030` + แสง `glow()` / `emergency()`), เบลอฉากหลังอัตโนมัติ `blurLayer()` เมื่อการ์ดเด้ง, และฟิล์มเกรน `grain()`<br>• **ระบบ HUD & ซับไตเติล:** การ์ดสีครีม `#F5EFE6` (`cardBox`, `badge`), กล่อง Telemetry มุมขวาบน (`drawTele`), และซับไตเติลสีขาวขอบดำไร้กรอบ (`drawSub`) | • **การดำเนินเรื่อง (Narrative Flow):** ลำดับเหตุการณ์ จังหวะการเปิดเผยปริศนา และจุดหักมุม ต้องเป็นไปตามพล็อตเรื่องที่ผู้ใช้กำหนด ไม่บังคับใช้โครงสร้าง 7 วันในห้าง<br>• **ฉากและพร็อพตามบริบทจริง (Setting-Native Props):** ห้ามนำพื้นกระเบื้องห้าง (`tiles`), ห้องลองเสื้อ, ป้ายเสา `C-13`, เทปกาวแปะแขน หรือการ์ดเทียบวันหมดอายุขนมปัง 3 ใบ ไปใส่ในเรื่องอื่น (เช่น ตลาดน้ำ, ป่า, โรงพยาบาล, รถไฟ) ให้วาดพื้นผิวและวัตถุตามสถานที่จริงของเรื่องนั้นๆ (เช่น โต๊ะไม้เก่า, ผิวน้ำคลอง, แผงหน้าปัดรถ, หิ้งพระ)<br>• **มุมกล้องตามอารมณ์ฉาก (Story-Driven Camera Angles):** ออกแบบมุมกล้อง (`views.js`) ให้เข้ากับเหตุการณ์ในฉากนั้นๆ (ดูหัวข้อ 2.3) |
 
-### 2.2 2.5D Multi-Plane Environment & Shaders
-Compose every scene from **4 depth planes** plus environmental shaders:
-1. **Plane 0 — Sky / Ambient Backdrop:** Deep midnight blue (`#080C18` → `#141D30`), Backrooms sickly fluorescent ochre (`#2A2614` → `#14120A`), or parking lot concrete slate (`#0F172A` → `#020617`).
-2. **Plane 1 — Blurred Far Background (`ctx.filter = 'blur(8px)'`):** Distant parking rows, infinite one-point perspective mall corridors, or snow-buried streets. Rack-focus dynamically to `blur(12px–14px)` whenever a HUD Rule/Math Card enters.
-3. **Plane 2 — Midground Architecture & Calculated Survival Props:**
-   - **Underground Parking B2:** Concrete pillars with black-and-yellow diagonal hazard stripes (`#EAB308` / `#09090B`), minimalist parked cars (blue, white, charcoal), numbered signage pillars (`C-01` to `C-12` vs impossible `C-13`).
-   - **Infinite Liminal Mall:** Pastel storefront shutter doors, infinite ceiling rows of diffuse warm fluorescent light tubes (`#FEF08A` @ `0.85`), central fountain square with water jets, supermarket aisles stacked with geometric cereal/bread packaging.
-   - **Hiding Spaces:** Clothing store fitting room booths with deep crimson velvet curtains (`#7F1D1D`), emergency exit fire doors with glowing neon green exit indicators (`[P - B2]`).
-4. **Plane 3 — Volumetric Light Cones, Floor Reflections & Vignette:**
-   - Wet mop floor reflections: Glossy floor tiles (`#0F172A`) reflecting ambient light and entity silhouette with dynamic water puddle shine (`rgba(255, 255, 255, 0.15)`).
-   - Flickering streetlights/fluorescents, warm flashlight cones, blackout transitions (lights snapping off row-by-row into darkness), and a dark radial horror vignette (`transparent 45%` → `rgba(0,0,0,0.88) 100%`).
-   - **Underground Parking B2:** Concrete pillars with black-and-yellow diagonal hazard stripes (`#EAB308` / `#09090B`), minimalist parked cars (blue, white, charcoal), numbered signage pillars (`C-01` to `C-12` vs impossible `C-13`).
-   - **Infinite Liminal Mall:** Pastel storefront shutter doors, infinite ceiling rows of diffuse warm fluorescent light tubes (`#FEF08A` @ `0.85`), central fountain square with water jets, supermarket aisles stacked with geometric cereal/bread packaging.
-   - **Hiding Spaces:** Clothing store fitting room booths with deep crimson velvet curtains (`#7F1D1D`), emergency exit fire doors with glowing neon green exit indicators (`[P - B2]`).
-4. **Plane 3 — Volumetric Light Cones, Floor Reflections & Vignette:**
-   - Wet mop floor reflections: Glossy floor tiles (`#0F172A`) reflecting ambient light and entity silhouette with dynamic water puddle shine (`rgba(255, 255, 255, 0.15)`).
-   - Flickering streetlights/fluorescents, warm flashlight cones, blackout transitions (lights snapping off row-by-row into darkness), and a dark radial horror vignette (`transparent 45%` → `rgba(0,0,0,0.88) 100%`).
+### 2.1 Character Construction (Authentic Real Lens Vector Rig — `8DT1Q3NAgaA` Standard)
+Characters are built from clean geometric Canvas2D primitives using horizontal cylindrical shading (`cyl()`) with **no third-party channel sprites** (`peachfoow_sprites.js` is strictly prohibited):
+- **Head & Face (`drawPerson` in `core.js`):**
+  - Rounded capsule head (`52x62px`, `border-radius: 22`) shaded with `cyl(c, -26, 52, K.skin, K.skinHi, K.skinSh)` (`#C98B5E`, `#D9A27A`, `#A66C44`).
+  - **Symmetrical Eyes (`[-10, 10]`):** Dark oval pupils (`#141414`) placed strictly at `for (const sx of [-10, 10])` offset by `fx = o.profile ? 8 : 3`, with a `1px` white highlight dot (`sx + fx + 1.2, -4.3`), natural periodic blinking (`(t % 3.7) < 0.12`), and subtle radius change (`eyeR = ex === 'shock' ? 4.2 : 3.3`). **NEVER place both eyes on the right edge (`x = 4, 20`) or draw giant white ovals on `shock`.**
+  - **Under-Eye Fatigue Bags:** Soft dark crescent shadows (`rgba(70, 30, 20, 0.45)`) curved directly under each eye, conveying authentic survival exhaustion, lack of sleep, and psychological dread.
+  - **Mouth & Nose:** Clean horizontal dark line for calm/stoic expressions; transitions to a small dark oval mouth (`#3a1210`) during sudden shocks (`expr === 'shock'`).
+  - **Hair:** Clean rounded black cap (`#151518`) with fringe triangles across the forehead and sideburns.
+- **Protagonist Proportions & Attire (`1:6.5` Ratio):**
+  - Lock `hipY = -92 + by`, `torsoH = 64`, upper/lower legs at `45px + 45px`, and upper/lower arms at `32px + 30px`. **NEVER shorten `hipY` to `-50` (which creates a distorted dwarf/chibi figure).**
+  - Cylindrical shaded shirt (`K.shirt`, `K.shirtHi`, `K.shirtSh` — customizable per story character), V-neck collar placket, dark trousers (`#2F3A4F` / `#222A3A`), and dark shoes (`#1E1E22`).
+- **2-Segment FK Poses (`poseWalk`, `poseStand`, `poseKneel`, `poseSit`) & Macro POV Hand (`hand`):**
+  - `poseWalk(t, speed, amp)` uses `Math.max(0, ...)` clamped knee flexion so legs bend naturally backward on lift with zero floor clipping.
+  - `hand(c, x, y, ang, s, o)` MUST draw a **`400px`-long forearm (`rr(c, -26, 0, 52, 400, 22)`)** extending from outside the bottom/side edge of the canvas (`y = 760..820`). **NEVER draw a short `150px` rectangle in mid-air (which looks like a severed floating arm).**
 
----
+### 2.2 Multi-Plane Lighting & Visible Night Palettes (Zero Black Intervals)
+Compose every scene with clear depth separation and **100% readable dark-scene lighting**:
+1. **Visible Night / Dark Palettes:** Even in total blackout or midnight horror scenes, **NEVER use pure black `#000000` / `#020406` for walls, water, or fog** (which causes `ffmpeg blackdetect` failures and makes the video unwatchable). Always use slate-indigo, deep navy, or dark teak mid-tones (`#162030`, `#1E293B`, `#283040`, `#3B281B`) contrasted against warm lanterns (`#F59E0B`), moonlight/mist (`#94A3B8`), or red danger glow (`emergency()`).
+2. **4 Depth Planes:**
+   - **Plane 0 (Sky / Distant Atmosphere):** Gradient backdrop appropriate to the story setting.
+   - **Plane 1 (Far Background Architecture / Silhouettes):** Parallax distant structures, trees, buildings, or 3D perspective depth (`corridor`).
+   - **Plane 2 (Midground Stage & Character Action):** The main interactive space where characters (`drawPerson`, animals, entities) move and interact with story props.
+   - **Plane 3 (Foreground Framing, Volumetric Glows & Vignette):** Foreground silhouettes (window frames, eaves, pillars, foliage), `glow()` light pools, `vignette()`, and `grain()`.
 
-## 2. Signature "Rules, Math & Lore" HUD System
+### 2.3 Story-Driven Camera Angle Vocabulary (การออกแบบมุมกล้องตามเนื้อเรื่องใน `views.js`)
+ห้ามใช้มุมกล้องด้านข้าง (Side View) ซ้ำๆ เกิน 2–3 ฉากติดต่อกัน และห้ามก๊อปปี้ฉากเฉพาะของห้าง (`backrooms-mall-7days`) มาใส่ในเรื่องอื่น ให้เลือกผสมผสาน **มุมกล้อง 7 รูปแบบ** นี้ให้สอดคล้องกับสถานที่และอารมณ์ของเนื้อเรื่องนั้นๆ:
+1. **1-Point / 2-Point 3D Perspective Shot (มุมมองความลึก 3 มิติ):** ใช้สมการโปรเจกชัน `P(X, Y, z)` วาดสภาพแวดล้อมตามเนื้อเรื่อง เช่น คลองน้ำยามวิกาลขนาบด้วยบ้านไม้, ทางเดินโรงพยาบาล, ถนนกลางหมอก, หรืออุโมงค์รถไฟ
+2. **Wide / High-Angle Establishing Shot (มุมกว้างเปิดพื้นที่และขอบเขตอันตราย):** แสดงโครงสร้างพื้นที่ทั้งหมดและขอบเขตของกฎ (เช่น ชายคาบ้านไม้ที่ยื่นเหนือท่าน้ำ, แผนผังบ้านพัก, หรือระยะห่างระหว่างจุดซ่อนตัวกับจุดเสี่ยง)
+3. **Over-the-Shoulder (OTS) / Back-Three-Quarter Shot (มุมมองข้ามไหล่ตัวเอก):** วาดตัวเอกหันหลังหรือหันข้าง (`o.back: true` หรือ `o.profile: true` สเกล `1.5x–2.0x`) อยู่มุมซ้าย/ขวาล่างของจอ มองออกไปเห็นสิ่งลี้ลับที่กำลังเคลื่อนเข้ามาในระยะกลาง
+4. **Low-Angle / Water-Level / Ground-Level Shot (มุมเสยจากระดับพื้นหรือผิวน้ำ):** ตั้งกล้องระดับต่ำ (เช่น ระดับผิวน้ำคลอง หรือระดับพื้นใต้เตียง) มองเสยขึ้นไปเห็นเสาเรือนไม้ กระถางธูป หรือเงาร่างที่ยืนค้ำอยู่ด้านบน
+5. **Architectural Frame-within-a-Frame (มุมแอบมองผ่านช่องหน้าต่าง/ซี่ไม้/บานประตู):** ใช้กรอบหน้าต่างไม้ ช่องลม หรือมุ้งลวดของสถานที่ในเรื่อง เป็นกรอบหน้า (Foreground) ล้อมรอบสิ่งที่อยู่ด้านนอก ขณะที่ตัวเอกซ่อนตัวอยู่ในเงามืดด้านหน้า
+6. **First-Person POV & Setting-Native Surface Shot (มุมมองสายตาตัวเองบนพื้นผิวจริงของเรื่อง):** เมื่อตัวเอกสำรวจสิ่งของ เขียนบันทึก หรือหยิบอุปกรณ์ ให้วาดพื้นผิวตามสถานที่จริงในเรื่อง (เช่น โต๊ะไม้สักเก่า, กระดานไม้ท่าน้ำ, เบาะรถยนต์ — **ห้ามใช้พื้นกระเบื้องห้างหากไม่ได้อยู่ในห้าง**) พร้อมท่อนแขน `hand()` ยื่นมาจากขอบล่างของจอ
+7. **Story-Specific Physics / Logic Diagram Shot (มุมมองแผนภาพคำนวณตามกลไกของเรื่อง):** ออกแบบกราฟิกประกอบการคำนวณให้ตรงกับวัตถุในเรื่อง (เช่น สเกลความยาวธูป 30 ซม. ที่กำลังไหม้ลดลงพร้อมควัน, มาตรวัดระดับน้ำ/ออกซิเจน, หรือแผนผังเวลาเดินเรือ) คู่กับการ์ด `calc`
 
-Read [Visual & HUD Specs](./references/visual-and-hud-specs.md) for exact coordinates, color tokens, and Canvas blueprints.
-
-1. **Survival Rule Card (`⚠️ กฎข้อ 1` – `กฎข้อ 5`):** Warm-cream card (`#FAF7F2`), dark red/charcoal badge pill (`#B91C1C` / `#18181B`), bold dark slate Thai rule headline (`#18181B`), danger condition highlighted in bold red (`#9E1B1B`), thin divider line, and uppercase English sub-caption (`RULE 1 · WHEN THE LIGHTS GO OUT — DON'T STEP ON THE WET FLOOR`).
-2. **Live Telemetry & Status Pill (Top-Right):** Dark charcoal rounded rectangle (`#18181B`):
-   - Line 1: `• วันที่ 7 / 7 · ไฟดับ   03:00` (Red pulsating dot `•`, bold white time).
-   - Line 2: `พลังงานที่เหลือ: 90 kcal` (Warm yellow/amber `#FACC15`).
-3. **Live Distance Tracker Pill (HUD Proximity Meter):**
-   - White rounded container below telemetry:
-     - Dark charcoal inner pill: `• ระยะห่าง` (Green or white dot).
-     - Big bold crimson text: `40 ม.` → `32 ม.` → `22 ม.` → `6 ม.` → `4 ม.` → `2 ม.`! (Builds intense claustrophobic suspense as entity nears).
-4. **Inventory & Resource Audit Card (`• ของที่มี · INVENTORY`):**
-   - Cream card listing audited supplies with quantities and caloric value: Duct tape 1 roll, Whiteboard markers 2 pens, Water bottle 0.3L, Bread 500 kcal.
-5. **Cursed Item / Food Expiry Validation Card:**
-   - Side-by-side product cards comparing:
-     - Item 1 (Valid): `ขนมปังโฮลวีท` · `EXP 12/11/2026` (Green border/tag).
-     - Item 2 (Calendar Anomaly): `แครกเกอร์ผัก` · `EXP 31/02/2026` (Red border: 31 Feb does not exist!).
-     - Item 3 (Cursed Anomaly): `ขนมปังลูกเกด` · `EXP เมื่อคุณกิน` (Purple border: Psychological horror warning).
-6. **Calculated Survival Math Card (`• คำนวณแคลอรี · CALORIES`):**
-   - Quantitative breakdown showing total available calories (`4,800 kcal`) and physics formula:
-     - `ถ้าเดิน 20 กม./วัน = 2,400 kcal → อยู่ได้แค่ 2 วัน`
-     - `ถ้าพักผ่อนนิ่ง = 690 kcal/วัน → อยู่รอดได้ 7 วัน!`
-7. **Spatial Rotation & Modulo Math Card (`• คำนวณหาทางออก · EXIT`):**
-   - Circular dial map with 12–16 sectors rotating around a central hub.
-   - Modular arithmetic formula:
-     - `ทุก 6 ชม. ทุกโซน เลื่อน +5 ช่อง ตามเข็มนาฬิกา`
-     - `โซน P (ลานจอด) ตอนนี้: ช่อง 9 ➔ 9 + 5 = 14 ≡ 2 (mod 12)`
-     - Precise exit window: `ช่อง 4 = ติดฟู้ดคอร์ท วันที่ 7 · 18:00 (ถ้าพลาดต้องรออีก 72 ชม.)`.
-8. **Branching Decision / Dilemma Flowchart:**
-   - Splits a sudden crisis at 17:58 (2 minutes before exit gate opens when lights fail early):
-     - **Option A:** `รอไฟติด` → `⏳ ทางออกเลื่อนหาย` (Starvation).
-     - **Option B:** `เดินฝ่าความมืด` → `🧹 ต้องผ่านมันไปให้ได้` (Execute Rule 1: walk calmly, don't step on wet floor).
-9. **Physical Clue & Anomaly Handwriting Card:**
-   - Macro close-up on physical artifact (forearm tape map, or mysterious duct tape on pillar C-12: `"วันที่ 8"` with identical handwriting).
+### 2.4 Mandatory Anti-Distortion & Visual QA Rules (กฎเหล็ก 6 ข้อป้องกันภาพและตัวละครเพี้ยน)
+ก่อนเรนเดอร์วิดีโอทุกครั้ง ต้องตรวจสอบไม่ให้เกิดข้อผิดพลาดทั้ง 6 ข้อนี้เด็ดขาด:
+1. **ห้ามเขียนพิกัดใบหน้าและสัดส่วนร่างกายขึ้นใหม่แบบเดาสุ่ม:** ต้องใช้ฟังก์ชัน `drawPerson` และ `drawJanitor` มาตรฐานจาก `core.js` (`hipY = -92`, ขายาวท่อนละ `45px`, ตาสมมาตร `[-10, 10]`) เท่านั้น
+2. **ห้ามวาดแขนสั้นลอยกลางอากาศ:** ทุกฉากที่ใช้ `hand()` ต้องวาดท่อนแขนยาว `400px` (`rr(c, -26, 0, 52, 400, 22)`) ยื่นพ้นขอบจอเสมอ หรือถ้าเป็นฉากตัวละครล้วงกระเป๋า/หยิบของในระยะกลาง ให้ใช้แขนของ `drawPerson` ที่เชื่อมกับหัวไหล่จริง
+3. **ห้ามปล่อยให้เกิดฉากมืดดำ (`0 Unintended Black Intervals`):** ตรวจสอบว่าทุกฉากมีแสงสว่างและสีพื้นหลังที่มองเห็นได้ชัดเจน และตอนเปลี่ยนฉาก (`edgeFade`) ให้ดรอปแสงลงเพียง `35–40%` (`rgba(10,14,22,0.38)`) ไม่เฟดลงสีดำสนิทค้างไว้
+4. **ระวัง Signature ของฟังก์ชันใน `core.js` ให้ตรงกันทั้งโปรเจกต์:**
+   - `prog(t, a, b)` รับค่า `(เวลาปัจจุบัน, เวลาเริ่ม a, เวลาจบ b)` **ไม่ใช่** `(เวลาปัจจุบัน, เวลาเริ่ม, ระยะเวลา d)`!
+   - `txt(c, s, x, y, size, col, weight, align, base)` รับค่า `size` เป็น **ตัวเลข (`Number` เช่น `24`)** ไม่ใช่สตริง CSS Font!
+   - ฉากที่มีแผนภาพหรือวัตถุสำคัญอยู่ฝั่งซ้ายคู่กับการ์ดฝั่งขวา ต้องใส่ชื่อ view ลงใน `noBlurViews` ใน `index.html` เพื่อไม่ให้ `rackBlur` เบลอแผนภาพฝั่งซ้ายจนอ่านไม่ออก
+5. **ตรวจสอบลำดับเลเยอร์ (`Z-Index Occlusion`):** วาดแขนหลัง (`suitSh`) $\rightarrow$ วาดด้ามจับ/ไม้พาย/ไม้คีบ $\rightarrow$ วาดลำตัวและแขนหน้า (`suitHi`) ทับด้านบน เพื่อให้มือกำวัตถุอย่างถูกต้อง ไม่ให้วัตถุลอยทับแขนหน้า
+6. **บังคับรันสคริปต์สร้างตารางภาพครบทุกฉาก (`audit_all_scenes.png`) และเปิดดูด้วยตา (`read_file`) ก่อนเรนเดอร์ MP4:**
+   - ต้องเรนเดอร์ภาพนิ่งของทุกฉาก (`Scene 1..N`) ออกมาเป็นแผ่นเดียว (`audit_all_scenes.png`) แล้วใช้เครื่องมือ `read_file` เปิดตรวจดูทุกช่องว่ามีฉากไหนตกหล่น (`fallback` ไปฉากเริ่มต้นเพราะชื่อ `s.view` ไม่ตรง), มีฉากไหนมืดเกินไป, หรือมีข้อความทับกันหรือไม่ ก่อนสั่งรัน `render_mp4.js`
 
 ---
 
-## 3. Narrative Architectures
+## 3. Signature "Rules, Math & Lore" HUD System (ปรับเนื้อหาตามบริบทเรื่อง)
 
-### Format A: 2-Minute Urban Legend Micro-Arc (~120–130s, ~20–25 beats)
-1. **Cold Open Paradox & Rule 1 (0:00–0:15)** → **Mundane Night Shift & Warning Artifact (0:15–0:45)** → **UI/Environmental Omen (0:45–1:15)** → **Confrontation, Decision Tree & Rule 2 Loophole (1:15–1:50)** → **Amulet Cost & Chilling Epilogue (1:50–2:10)**.
+Read [Visual & HUD Specs](./references/visual-and-hud-specs.md) for exact coordinates, color tokens, and Canvas blueprints. การ์ดทุกชนิดใช้ดีไซน์สีครีม/แดง/เทาดำแบบ Real Lens แต่ **หัวข้อ ไอคอน และเนื้อหาในการ์ดต้องปรับให้ตรงกับเนื้อเรื่องนั้นๆ**:
 
-### Format B: Master Calculated Survival Long-Form (~5:30–6:00 Minutes / 330–360s, ~25 Scenes)
-Proven in *"7 วัน ติดอยู่ในห้างสรรพสินค้าที่ไม่มีทางออก"* and *"-40°C Tropical Freeze"*:
-- **Act 1: Cold Open Warning & Fatal Paradox (0:00–0:35):**
-  - Scene 1: Sudden dark corridor confrontation. Pop Rule #1 warning (*"เมื่อไฟห้างดับ ห้ามวิ่ง และห้ามเหยียบพื้นที่เพิ่งถูกถูเด็ดขาด"*).
-  - Scene 2: Kinetic Title Card: Spotlight cone on dark wall with giant red title + English sub-label.
-- **Act 2: The Baseline & Spatial Anomaly (0:35–1:10):**
-  - Scenes 3–5: Protagonist introduction (*"ผมชื่อต้น..."*), mundane post-work routine in Parking B2, locating car near impossible pillar `C-13` (parking lot only has `C-01` to `C-12`). Turning past column and crossing into liminal space.
-- **Act 3: Resource Audit & Spatial Paradox (1:10–1:55):**
-  - Scenes 6–8: Buzzing fluorescent lights, zero phone signal, turning off phone to preserve battery (`87%`).
-  - Scenes 9–10: Emptying pockets onto tile floor for Resource Audit Card (duct tape, 2 markers, water, bread). Walking for hours only to loop back to the same central fountain square. Marking floor tile with tape arrow `07`.
-- **Act 4: Architectural Rules & Cursed Sustenance (1:55–2:35):**
-  - Scenes 11–12: Midnight structural rumble (`00:00`). Pop Rule #2 (`"ทุก 6 ชั่วโมง โครงสร้างทั้งห้างจะสลับตำแหน่งเอง"`). Circular dial map showing sector shifting.
-  - Scenes 13–15: Day 2 in Supermarket. Inspecting food expiry labels. Pop Rule #3 (`"กินเฉพาะของที่วันหมดอายุมีอยู่จริงบนปฏิทิน"`). Lore consequence of eating fake-date food (memory wipe). Calorie Math Card showing 4,800 kcal budget (20 km burn vs 7-day survival resting rate).
-- **Act 5: The Entity & The Proximity Chase (2:35–3:25):**
-  - Scenes 16–18: Night 2 (`03:00`). Lights shut off row-by-row. Squeaking cleaning cart wheels. Encounter with The Cleaner.
-  - Scenes 19–20: Protagonist hides in clothing store fitting room behind red curtain. Live Distance Tracker drops: `40 ม.` → `22 ม.` → `6 ม.` → `2 ม.`! The Cleaner mops past inches away.
-- **Act 6: Countermeasure & Calculated Exit Formula (3:25–4:10):**
-  - Scenes 21–22: Day 3–4 morning. Discovering all floor tape arrows were mopped away. Solution: Forearm Tape Map (`[A → 4]`, `[K → 1]`, `[P → 9]`).
-  - Scenes 23–24: Recording 10 rotation cycles. Pattern Card (+5 slots clockwise every 6 hrs). Modulo Exit Formula calculating Zone P alignment with Food Court at Day 7, 18:00.
-- **Act 7: Peak Threat Climax & Execution (4:10–5:00):**
-  - Scenes 25–27: Day 7 (`17:58`). Starving, 2 milk cartons left. Lights suddenly fail 2 minutes early!
-  - Scene 28: Branching Decision Dilemma Card (`รอไฟติด` vs `เดินฝ่าความมืด`). Protagonist chooses to walk forward in darkness, calmly executing Rule 1.
-  - Scene 29: Entity right behind him (`เสียงล้อรถเข็นอยู่ข้างหลังไม่ถึง 5 เมตร`, Distance `4 ม.`). Seeing glowing green exit sign `[P - B2]` and bursting through the door.
-- **Act 8: Time Dilation & Chilling Epilogue (5:00–5:43):**
-  - Scene 30: Returning to real B2 parking lot. Phone turns on: `19:14` Friday night (only 12 minutes passed in the real world vs 7 days inside!).
-  - Scene 31: Looking back at pillar C-13: It has vanished, leaving only C-12. But on C-12 is a fresh duct tape note: `"วันที่ 8"` written in the protagonist's exact handwriting!
-  - Scene 32: Outro Title Card with chilling community question (*"ถ้าเป็นคุณ... จะกล้าลงไปลานจอด B2 อีกไหม?"*).
+1. **Survival Rule Card (`⚠️ กฎข้อ 1` – `กฎข้อ N`):** การ์ดสีครีม (`#F5EFE6`), ป้ายกำกับสีแดง (`#B91C1C`), ข้อความกฎบรรทัดแรกสีดำ (`#1C1917`), เงื่อนไขห้ามทำเด็ดขาดสีแดง (`#B91C1C`), เส้นคั่นบางๆ และคำแปลภาษาอังกฤษด้านล่าง
+2. **Live Telemetry & Status Pill (Top-Right):** กล่องสีดำโปร่งแสง (`rgba(14,14,18,0.78)`) แสดงวัน/คืน เวลา และทรัพยากรหลักของเรื่องนั้นๆ (เช่น ความยาวธูปที่เหลือ, แคลอรี, อุณหภูมิ, หรือแบตเตอรี่)
+3. **Live Distance / Countdown Pill (HUD Proximity Meter):** กล่องสีครีมใต้ Telemetry แสดงระยะห่างของสิ่งลี้ลับ หรือเวลานับถอยหลังที่เป็นอันตรายถึงชีวิต
+4. **Inventory & Resource Audit Card (`• ของที่มี · INVENTORY`):** แสดงรายการสิ่งของที่มีอยู่จริงตามเนื้อเรื่อง
+5. **Calculated Survival Math Card (`• คำนวณ...`):** แสดงสมการและการคำนวณเชิงตรรกะของเรื่องนั้นๆ (เช่น อัตราการเผาไหม้ธูป, อัตราการใช้ออกซิเจน, แคลอรี, หรือรอบเวลา)
+6. **Branching Decision / Dilemma Flowchart (`drawFlow`):** แผนผังทางเลือก 2 ทางในนาทีวิกฤต แสดงผลลัพธ์ทางที่ตาย (`danger: true` สีแดง) เทียบกับทางที่รอดตามกฎ (`danger: false` สีเขียว)
+7. **Clue / Anomaly / Lore Card (`clue`):** การ์ดเปิดเผยความจริงหรือวัตถุปริศนาในจุดหักมุมท้ายเรื่อง
 
 ---
 
-## 4. Voiceover & Sound Design Protocol (`gemini-3.8-flash-tts` First!)
+## 4. Narrative Design Principles (หลักการวางโครงเรื่องตามเนื้อหาจริง)
+
+แทนที่จะลอกโครงเรื่องจากเรื่องใดเรื่องหนึ่ง ให้วางโครงสร้างตามเนื้อเรื่องที่ได้รับมอบหมายโดยยึด **หัวใจ 5 ข้อของแนวสยองขวัญเชิงตรรกะ (Analytical Survival Horror)**:
+1. **Cold Open Hook (ประโยคเปิดคลิปเตือนภัยทันที):** เปิดด้วยสถานการณ์เฉพาะของเรื่องนั้นๆ และกฎข้อที่สำคัญที่สุดภายใน 10 วินาทีแรก
+2. **Isolation & Rule Discovery (จุดเริ่มต้นการติดอยู่ในสถานที่และที่มาของกฎ):** อธิบายสภาพแวดล้อมจริงของเรื่อง และวิธีที่ตัวเอกค้นพบกฎการเอาชีวิตรอด (เช่น สมุดบันทึกเก่า, ป้ายประกาศ, ข้อความเสียง, หรือคำเตือนของคนพื้นที่)
+3. **Quantitative Survival Mechanics (เงื่อนไขเชิงตัวเลขและการคำนวณ):** แปลงกฎในเรื่องให้เป็นโจทย์คณิตศาสตร์หรือฟิสิกส์ที่คำนวณตามได้จริง (เช่น ระยะเวลา, ความเร็วการเผาไหม้, ระยะทาง, จำนวนทรัพยากรที่จำกัด)
+4. **Escalating Encounters & Rule Execution (การเผชิญหน้าและการใช้ตรรกะแก้ปัญหา):** ตัวเอกใช้กฎและตัวเลขที่คำนวณไว้รับมือกับเหตุการณ์หลอนที่ทวีความรุนแรงขึ้นทีละขั้น
+5. **The Logical Twist (จุดหักมุมที่เกิดจากช่องโหว่ของกฎหรือความเข้าใจผิดเพียงจุดเดียว):** ทำตามกฎและคำนวณถูกทุกข้อ ยกเว้นรายละเอียดเดียวที่มองข้ามไป ซึ่งเปลี่ยนความหมายของการกระทำทั้งหมดในตอนจบ
+
+---
+
+## 5. Voiceover & Sound Design Protocol (`gemini-3.8-flash-tts` First!)
 
 Read [Pipeline & Tooling Guide](./references/pipeline-and-tooling.md) for the complete Node.js implementation.
 
-### 4.1 TTS Model Priority Order (MANDATORY)
+### 5.1 TTS Model Priority Order (MANDATORY)
 1. **1st Priority — `gemini-3.8-flash-tts` (ALWAYS TRY FIRST):**
    - Call via the modern **Gemini Interactions API** (`POST https://generativelanguage.googleapis.com/v1beta/interactions`).
    - Use male narrator voice **`Puck`** (`generation_config.speech_config: [{ voice: "Puck" }]`) with `speech_metadata` style annotation (`"calm, composed, deadpan male survival-horror documentary narrator in Thai, steady pace, low and even pitch, quiet suspense"`).
@@ -175,62 +128,50 @@ Read [Pipeline & Tooling Guide](./references/pipeline-and-tooling.md) for the co
 3. **3rd Priority — `gemini-3.1-flash-tts-preview`:**
    - Separate Free Tier quota pool via `/v1beta/interactions` with voice `Puck`. **Important:** Omit `annotations` (`speech_metadata`) for `3.1-flash-tts-preview` (it returns `HTTP 400` if `speech_metadata` is present) and wrap raw `audio/l16` (`24 kHz` mono PCM) in a 44-byte RIFF WAV header if `"RIFF"` is absent.
 
-### 4.2 Strict Single-Persona Consistency, SHA-256 Cache & Proportional Subtitles
+### 5.2 Strict Single-Persona Consistency, SHA-256 Cache & Story-Matched SFX
 - **NEVER mix different TTS engines within the same video** (e.g., never mix Gemini `Puck` on Scenes 1–3 with `msedge-tts` on Scenes 4–25). All scenes (`01`..`N`) MUST share one identical vocal persona.
 - **SHA-256 Disk Caching (`audio/cache/<hash>.wav`):** Hash the scene text payload to prevent redundant API calls when regenerating or modifying unrelated scenes.
 - **Proportional Thai Subtitles:** Chunk Thai dialogue to `<= 36` characters per cue and calculate start/end timestamps proportionally by character length.
-- **Specific Atmospheric SFX for Liminal Survival Horror:**
-  - `fluorescent_hum`: Persistent 60Hz + 120Hz electrical buzz ducked under voice.
-  - `mechanical_grind`: Deep low-frequency concrete-on-steel friction for the 6-hour sector shifts.
-  - `cart_squeak`: Periodic high-pitched metal wheel screech for the cleaning cart (`03:00`).
-  - `mop_squelch`: Wet damp fabric friction on tile flooring.
-  - `ui_pop` & `radar_ping`: Crisp chimes for HUD card reveals and distance meter updates.
+- **Story-Matched Procedural SFX:** Synthesize ambient beds and foley cues that match the story's setting (e.g., canal water lapping, wooden boat creaks, brass bell chimes, dog barks, fluorescent hum, wind/rain, footsteps, and crisp `ui_pop` chimes for HUD card reveals).
 - **Unified Broadcast Mastering (`-18 LUFS`):** Pass every scene WAV through the exact same FFmpeg chain (80Hz highpass, low-mid warmth at `180Hz`, harshness dip at `3.5kHz`, `2.5:1` compressor, `loudnorm=I=-18.0:LRA=5.0:TP=-1.5`) and mix procedural PCM foley/ambience with envelope sidechain ducking (duck by 35% during speech).
 
 ---
 
-## 5. End-to-End Deliverables: MP4, Vertical Shorts (`EP 1–5`) & Covers
+## 6. End-to-End Deliverables: MP4, Vertical Shorts (`EP 1–5`) & Covers
 
 Read [Shorts & Thumbnails Guide](./references/shorts-and-thumbnails.md) for FFmpeg filter graphs and Puppeteer templates.
 
 1. **Interactive HTML5 Player & Full `16:9` MP4 (`index.html` + `render_mp4.js`):**
-   - Modular `episode.js` (script + SFX cues), `core.js` (2.5D rigs + HUD renderer), `views.js` (scene renderers), `timeline.js`, and deterministic `24/30 FPS` Puppeteer-to-FFmpeg `image2pipe` export at `loudnorm=I=-18:TP=-1.5:LRA=11`.
+   - Modular `episode.js` (script + SFX cues), `core.js` (2.5D rigs + HUD renderer), `views.js` (story-specific scene renderers), `timeline.js`, and deterministic `24/30 FPS` Puppeteer-to-FFmpeg `image2pipe` export at `loudnorm=I=-18:TP=-1.5:LRA=11`.
 2. **Long-Form YouTube Thumbnails (`1920x1080`) + SEO Package:**
-   - Generate **2 variants**:
-     - (A) **Showdown / Confrontation Split (The Signature Real Lens Thumbnail):** Entity with mop and bleeding eyes on left, Protagonist crouching in shock on right, Rule 1 card top-left, Telemetry + Distance pill top-right, Giant bold white title with red neon glow + yellow quote banner bottom.
-     - (B) **5-Panel Escalation Strip:** 5 vertical columns (`Day 1` → `Day 7` or `Rules 1–4`).
+   - Generate **2 variants** tailored to the story's setting and main threat:
+     - (A) **Showdown / Confrontation Split (The Signature Real Lens Thumbnail):** Protagonist vs. the story's Entity in the story's environment, Rule 1 card top-left, Telemetry + Distance pill top-right, Giant bold white title with red neon glow + yellow quote banner bottom.
+     - (B) **5-Panel Escalation Strip:** 5 vertical columns depicting 5 key escalating beats/rules of the story.
 3. **Vertical Shorts / TikTok / Reels Multi-Episode Adaptation (`1080x1920`, `9:16`):**
-   - Split master video into **5 Cliffhanger Episodes (`EP 1` – `EP 5`, ~60–80s each)**:
-     - `EP 1`: เสาลานจอดรถ C-13 ที่ไม่มีอยู่จริง & กฎข้อ 1
-     - `EP 2`: วันที่ 1 วนลานน้ำพุเดิม & กฎข้อ 2 ห้างสลับตำแหน่งทุก 6 ชม.
-     - `EP 3`: ซูเปอร์มาร์เก็ตวันหมดอายุ 31 ก.พ. & คำนวณ 4,800 kcal
-     - `EP 4`: ตี 3 ไฟดับ... ภารโรงไร้หน้า & ซ่อนตัวในห้องลองเสื้อ
-     - `EP 5`: แผนที่บนแขน, คำนวณช่องทางออก mod 12 & โน้ตปริศนาวันที่ 8
-   - **Shorts Mastering & Framing:** Mastered to `-14 LUFS`, rendered with **Smart Center Zoom ($1.35\times$)** and **Safe Zone Check** (subtitles strictly $Y \le 1580\text{ px}$, right margin $\ge 140\text{ px}$).
+   - Split master video into **5 Cliffhanger Episodes (`EP 1` – `EP 5`, ~60–80s each)** following the story's natural act breaks.
+   - **Minimalist Overlay (`overlay_epX.png`):** Render **ONLY the Video Title (`ชื่อคลิป`) and the single Red EP Pill (`EP X: ...`)** at the top (`y: 305` and `y: 345`). **ห้ามใส่ข้อความหมวดหมู่ด้านบนสุด, ห้ามใส่ป้ายสถานะแถวที่สองใต้ป้าย EP, และห้ามใส่กล่องข้อความสีครีม/การ์ดสรุปกฎด้านล่างของจอเด็ดขาด!**
+   - **Shorts Mastering & Framing:** Mastered to `-18 LUFS` / `-14 LUFS`, rendered with 3-layer composite and **Safe Zone Check** (subtitles strictly $Y \le 1580\text{ px}$, right margin $\ge 140\text{ px}$).
 4. **Scene-Based Vertical Shorts Covers (`1080x1920`, `9:16`):**
-   - Extract real climax frame from each episode (`ffmpeg -ss <t> -i master.mp4 -frames:v 1`) and composite in Puppeteer Canvas with: glowing accent border, Volumetric Flashlight Beam, Comic Speech Bubble, Bold White + Giant Blood-Red Top Headline, and `EP 1–5` Bottom Stamp.
+   - Extract real climax frame from each episode (`ffmpeg -ss <t> -i master.mp4 -frames:v 1`) and composite in Puppeteer Canvas with **ONLY the Top Headline (`ชื่อคลิป`), Center Climax Frame, and `EP 1–5` Stamp** (ห้ามใส่กล่องคำพูดหรือกล่องข้อความด้านล่าง).
 5. **Viral Copywriting Package (Titles, Captions & Hashtags):**
-   - Deliver 5 tailored titles (`[EP X] + Trigger Hook + Emoji + | Series Title`), 5-part suspense captions, and full-video YouTube SEO package.
+   - Deliver tailored YouTube titles, full timestamps description, and 5 Shorts captions + hashtags.
 
 ---
 
-## 6. End-to-End Production Checklist & QA Gate
+## 7. End-to-End Production Checklist & Mandatory Visual QA Gate
 
-When creating a new Real Lens episode from scratch, execute this exact 6-phase pipeline:
+When creating a new Real Lens episode from scratch, execute this exact 7-phase pipeline:
 
 ```
-[Phase 1: Script] ──► [Phase 2: Audio] ──► [Phase 3: Player] ──► [Phase 4: MP4] ──► [Phase 5: Thumbs] ──► [Phase 6: Shorts]
-  25-Scene Arc         Gemini 3.8 TTS        Canvas 2.5D          Puppeteer Pipe       16:9 (2 Options)     EP 1–5 (9:16)
-  Rules & Physics      EBU -18 LUFS          Views & Shaders      Deterministic        SEO Timestamps       Covers + Captions
+[Phase 1: Script] ─► [Phase 2: Audio] ─► [Phase 3: Views] ─► [Phase 4: Audit Grid] ─► [Phase 5: MP4] ─► [Phase 6: Thumbs/Shorts] ─► [Phase 7: Final QA]
+  Story-Specific       Gemini 3.8 TTS      2.5D Visual Style    audit_all_scenes.png     Puppeteer Pipe     16:9 + EP 1–5 (9:16)        inspect_video.js
+  Rules & Math         EBU -18 LUFS        Story Camera Shots   Read & Verify Every      Deterministic      Covers + Captions           16/16 PASS (0 Black)
 ```
 
-1. **Phase 1 — Narrative & Scripting (`episode.js`):** Draft 25 scenes (~5:30–6:00 min) following Format B (Rules, Quantitative Math, Anomaly Cards, Cliffhangers).
-2. **Phase 2 — Voiceover & Sound Design (`generate_audio.js`):** Synthesize narration via `gemini-3.8-flash-tts` first (`voice: "Puck"`), use SHA-256 audio cache, wrap RIFF headers, normalize to `-18 LUFS`, slice Thai subtitles ($< 36$ chars), mix procedural SFX/ambience with sidechain ducking, and output `timeline.json`.
-3. **Phase 3 — 2.5D Rigging & Scene Views (`core.js`, `views.js`, `index.html`):** Implement multi-plane Canvas2D scenes, 2-segment FK legs, hand sockets (`carry_bag`, `crouch_hold_item`, `two_hand_mop`), dynamic DoF blur, volumetric cones, and HUD rule cards.
-4. **Phase 4 — Deterministic Video Render (`render_mp4.js`):** Step Puppeteer in frame batches (`24/30 FPS`) and stream into FFmpeg `image2pipe` + `master.wav` (`-18 LUFS`).
-5. **Phase 5 — Long-Form YouTube Packaging (`generate_thumbnail.js`):** Render Showdown Split & 5-Panel thumbnails (`1920x1080`) + complete timestamps description.
-6. **Phase 6 — Vertical Shorts Multi-Episode Adaptation (`shorts/`):**
-   - Generate 5 transparent HUD overlays (`generate_shorts_overlays.js`).
-   - Render 5 vertical `1080x1920` MP4s (`render_all_shorts.js`) with 3-layer composite, Smart Center Zoom ($1.35\times$), mastered to `-14 LUFS`, respecting the $Y \le 1580\text{ px}$ Safe Zone.
-   - Extract 5 real climax frames and render 5 scene-based vertical covers (`generate_scene_covers.js` + `make_covers.html`).
-   - Write 5 viral Titles + 5-Part Captions ready for TikTok, Reels, and YouTube Shorts.
+1. **Phase 1 — Story-Specific Narrative & Scripting (`episode.js`):** Draft 25–30 scenes (~5:30–6:30 min) tailored to the user's story prompt (Rules, Quantitative Math, Setting-Native Clues, Logical Twist).
+2. **Phase 2 — Voiceover & Sound Design (`generate_audio.js`):** Synthesize narration via `gemini-3.8-flash-tts` first (`voice: "Puck"`), use SHA-256 audio cache, wrap RIFF headers, normalize to `-18 LUFS`, slice Thai subtitles ($\le 36$ chars), mix story-matched procedural SFX/ambience, and output `timeline.json` + `timeline.js`.
+3. **Phase 3 — 2.5D Rigging & Story-Driven Scene Views (`core.js`, `views.js`, `index.html`):** Use the canonical `backrooms-mall-7days` (`8DT1Q3NAgaA`) 2.5D visual engine in `core.js`, and design story-native camera angles and environments in `views.js` (zero copied mall tropes!).
+4. **Phase 4 — Mandatory Pre-Render All-Scene Visual Audit (`audit_all_scenes.png`):** Render a grid image showing every single scene (`1..N`) with its scene ID and `s.view` name, and inspect it visually with `read_file` to confirm 0 distorted faces, 0 floating severed arms, 0 black scenes, and 0 missing view mappings before rendering MP4.
+5. **Phase 5 — Deterministic Video Render (`render_mp4.js`):** Step Puppeteer in frame batches (`24/30 FPS`) and stream into FFmpeg `image2pipe` + `master.wav` (`-18 LUFS`).
+6. **Phase 6 — Long-Form Thumbnails & Vertical Shorts (`generate_thumbnail.js`, `render_all_shorts.js`, `generate_scene_covers.js`):** Render Showdown & 5-Panel thumbnails (`1920x1080`), 5 vertical Shorts (`1080x1920`), and 5 vertical covers.
+7. **Phase 7 — Final Automated QA Gate (`inspect_video.js`):** Run `node inspect_video.js <video.mp4>` and `node inspect_video.js shorts/<ep1.mp4> --shorts` and verify **16/16 PASS (`100% PRODUCTION READY & COMPLIANT`)** with **0 Unintended Black Intervals**.
