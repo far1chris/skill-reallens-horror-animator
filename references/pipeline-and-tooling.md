@@ -1,12 +1,12 @@
 # Programmatic Animation Pipeline & Tooling Guide
 
-This guide explains how an AI Agent builds, voices, masters, and renders **Real Lens** and **Rules of Survival / Liminal Space** style 2.5D animations end-to-end using Node.js, HTML5 Canvas, Gemini Interactions TTS, Puppeteer, and FFmpeg.
+This guide explains how an AI Agent builds, voices, masters, and renders **Real Lens** and **Rules of Survival / Liminal Space** style 2.5D animations end-to-end using Node.js, HTML5 Canvas, **HyperFrames (`heygen-com/hyperframes`)**, Gemini Interactions TTS, Puppeteer, and FFmpeg.
 
 ---
 
 ## 1. Standard Project File Layout & Tooling Stack
 
-Install local dependencies once (`puppeteer-core`, `ffmpeg-static`, `@fontsource/kanit`):
+Install local dependencies once (`puppeteer-core`, `ffmpeg-static`, `ffprobe-static`, `@fontsource/kanit`):
 
 | File / Layer | Role in Production Pipeline |
 | :--- | :--- |
@@ -14,8 +14,10 @@ Install local dependencies once (`puppeteer-core`, `ffmpeg-static`, `@fontsource
 | `core.js` | Reusable 2.5D cylindrical character rigs (Protagonist "ต้น", Entity "ภารโรงไร้หน้า"), procedural shaders (wet tile shine, fluorescent flicker, horror vignette), camera rack-focus blur helpers, and Cream/Slate HUD card renderers. |
 | `views.js` | Scene-specific Canvas2D painters mapped by `scene.view` (e.g., `parkingB2`, `liminalMall`, `fountainSquare`, `supermarket`, `fittingRoom`, `darknessSneak`, `outroCard`). |
 | `generate_audio.js` | Synthesizes unified Thai voiceover (**`gemini-3.8-flash-tts` 1st priority**), normalizes to `-18 LUFS`, mixes procedural SFX/ambience, and outputs `audio/master.wav`, `audio/master.mp3`, `timeline.json`, and `timeline.js`. |
-| `index.html` | Interactive HTML5 Canvas player (`1280x720` or `1920x1080`) exposing deterministic `window.renderAtTime(sec)` and `body.export-mode`. |
-| `render_mp4.js` | Steps headless Chrome in frame batches (`24` or `30` FPS) and pipes JPEG frames into `ffmpeg -f image2pipe` with `audio/master.wav`. |
+| `index.html` | **HyperFrames-compliant** HTML5 Canvas composition (`1280x720` or `1920x1080`) exposing `window.__timelines['main']`, `hf-seek` listener, and `window.renderAtTime(sec)`. |
+| `sync_hyperframes.js` | Synchronizes `timeline.json` total duration + scene `.clip` beat markers (`<= 3` per track lane) into `index.html`, and copies `Kanit` `.woff2` fonts into `assets/fonts/` for offline/Docker/HyperFrames lint compliance. |
+| `hf.js` | Cross-platform Node wrapper around `npx hyperframes` that automatically injects `ffmpeg-static` and `ffprobe-static` into `process.env.PATH`. |
+| `render_mp4.js` | Steps headless Chrome in frame batches (`24` or `30` FPS) and pipes JPEG frames into `ffmpeg -f image2pipe` with `audio/master.wav` (can be used alongside or interchangeably with `node hf.js render`). |
 | `generate_thumbnail.js` | Renders `1920x1080` YouTube thumbnails (Showdown Split + 5-Panel Strip). |
 | `generate_shorts_overlays.js` / `render_all_shorts.js` / `generate_scene_covers.js` | Cuts the master MP4 into `1080x1920` (`9:16`) Shorts episodes (`EP 1–5`) with HUD overlays and scene-based vertical covers (see [Shorts & Thumbnails Guide](./shorts-and-thumbnails.md)). |
 
@@ -204,33 +206,346 @@ module.exports = { getOrGenerateSceneAudio, sliceThaiSubtitlesProportionally };
 
 ---
 
-## 3. Core HTML5 Canvas 2.5D Architecture & Deterministic MP4 Export
+## 3. Core HTML5 Canvas 2.5D Architecture, HyperFrames Integration & Deterministic MP4 Export
 
-### 3.1 Multi-Plane `window.renderAtTime(t)`
+### 3.1 Multi-Plane `window.renderAtTime(t)` + HyperFrames Triple-Adapter (`index.html`)
 
-```javascript
-window.renderAtTime = function(t) {
-  const scene = findSceneAt(t);
-  const localT = t - scene.start;
-  ctx.clearRect(0, 0, W, H);
+Every project's `index.html` MUST comply with the **HyperFrames (`heygen-com/hyperframes`) HTML/JS Contract** (`0 errors, 0 warnings` on `node hf.js lint` and `node hf.js check`) while also exposing `window.renderAtTime(t)` for `audit_all_scenes.js` and `render_mp4.js`:
 
-  // Plane 0–2: Backdrop, Architecture & Characters (blurred when HUD focus is active)
-  ctx.save();
-  if (scene.hudBlur) ctx.filter = 'blur(10px) brightness(0.72)';
-  VIEWS[scene.view](ctx, localT, t, scene);
-  ctx.restore();
+- **Why `@font-face` points to `assets/fonts/kanit-*.woff2`:** HyperFrames fails lint with `font_family_without_font_face` if `'Kanit'` is used in CSS without local `@font-face` files.
+- **Why `<canvas id="stage">` has `data-layout-ignore` and `data-hold`:** `data-layout-ignore` prevents false DOM text-overlap checks on the canvas wrapper, and `data-hold` tells the Craft audit (`npx hyperframes check`) that the `<canvas>` DOM box stays stationary while its internal 2D context paints every frame (preventing false `dead_stretch` warnings).
+- **Why `<audio id="master-audio">` has NO `play()` / `pause()` / `requestAnimationFrame`:** HyperFrames owns media transport and timeline scrubbing; imperative media calls trigger `imperative_media_control` and `requestanimationframe_in_composition` lint errors.
 
-  // Plane 3–5: Horror Vignette, HUD Rule/Math Cards, Telemetry & Subtitles
-  drawHorrorVignette(ctx, W, H);
-  if (scene.hud) drawHudCard(ctx, localT, scene.hud);
-  if (scene.telemetry) drawTelemetry(ctx, localT, scene.telemetry);
-  drawSubtitleAt(ctx, localT, scene.subs);
-};
+```html
+<!DOCTYPE html>
+<html
+  lang="th"
+  data-composition-variables='[
+    {"id":"title","type":"string","label":"Episode Title","default":"Real Lens Survival Horror"},
+    {"id":"shortsMode","type":"boolean","label":"Vertical Shorts Mode","default":false}
+  ]'
+>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280, height=720" />
+<title>Real Lens 2.5D Survival Horror (HyperFrames)</title>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+<style>
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-400-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-400-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 500;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-500-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-500-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 600;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-600-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-600-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 700;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-700-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-700-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 800;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-800-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-800-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 900;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-900-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-900-normal.woff2") format("woff2");
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1280px;
+    height: 720px;
+    background: #070A12;
+    color: #FAF6EE;
+    font-family: "Kanit", sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  #root {
+    position: relative;
+    width: 1280px;
+    height: 720px;
+    overflow: hidden;
+    background: #0B1320;
+  }
+  #stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1280px;
+    height: 720px;
+    background: #0B1320;
+    display: block;
+    z-index: 1;
+  }
+</style>
+</head>
+<body>
+<div
+  id="root"
+  data-composition-id="main"
+  data-start="0"
+  data-duration="300"
+  data-width="1280"
+  data-height="720"
+  data-fps="24"
+>
+  <canvas
+    id="stage"
+    class="clip"
+    data-start="0"
+    data-duration="300"
+    data-track-index="0"
+    data-layout-ignore
+    data-hold
+    width="1280"
+    height="720"
+  ></canvas>
+  <audio
+    id="master-audio"
+    class="clip"
+    data-start="0"
+    data-duration="300"
+    data-track-index="1"
+    data-volume="1"
+    src="audio/master.wav"
+  ></audio>
+</div>
+
+<script src="timeline.js"></script>
+<script src="core.js"></script>
+<script src="views.js"></script>
+<script>
+(function () {
+  const TL = window.TIMELINE;
+  const cvs = document.getElementById('stage');
+  const ctx = cvs.getContext('2d');
+  const TOTAL = TL.total;
+  const SCENES = TL.scenes;
+
+  function findScene(t) {
+    t = clamp(t, 0, TOTAL - 0.001);
+    for (let i = SCENES.length - 1; i >= 0; i--) {
+      if (t >= SCENES[i].start) return SCENES[i];
+    }
+    return SCENES[0];
+  }
+
+  function renderAt(t) {
+    t = clamp(t, 0, TOTAL);
+    const s = findScene(t);
+    const lt = Math.max(0, t - s.start);
+
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    const fn = VIEWS[s.view] || VIEWS[SCENES[0].view];
+
+    const activeCard = s.card || (typeof normalizeCard === 'function' ? normalizeCard(s) : null);
+    let rackBlur = 0;
+    const noBlurViews = window.NO_BLUR_VIEWS || [];
+    if (activeCard && !noBlurViews.includes(s.view) && activeCard.type !== 'inventory') {
+      const at = activeCard.at || 0.4;
+      const ca = prog(lt, at, at + 0.45) * (1 - 0.85 * prog(lt, s.dur - 0.32, s.dur));
+      rackBlur = ca * (activeCard.type === 'flow' ? 6.0 : 4.0);
+    }
+    if (rackBlur > 0.35) {
+      blurLayer(ctx, rackBlur, (b) => fn(b, lt, s), `brightness(${(1 - rackBlur * 0.035).toFixed(2)})`);
+    } else {
+      fn(ctx, lt, s);
+    }
+
+    const fadeIn  = prog(lt, 0, 0.14);
+    const fadeOut = 1 - prog(lt, s.dur - 0.14, s.dur);
+    const edgeFade = Math.min(fadeIn, fadeOut);
+
+    if (s.chapter) drawChapter(ctx, s.chapter, lt);
+    drawTele(ctx, s, lt);
+    if (activeCard) drawCard(ctx, activeCard, lt, s.dur);
+    grain(ctx, t, 0.04);
+
+    if (edgeFade < 1) {
+      ctx.fillStyle = `rgba(10,14,22,${(1 - edgeFade) * 0.38})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    drawSub(ctx, s, lt);
+    ctx.restore();
+  }
+
+  // 1. Standalone Puppeteer API (audit_all_scenes.js & render_mp4.js)
+  window.__setHeadless = function () { document.body.classList.add('headless'); };
+  window.seekTo = function (t) { renderAt(t); };
+  window.renderAtTime = function (t) { renderAt(t); };
+  window.__TOTAL_DURATION = TOTAL;
+
+  // 2. Native HyperFrames Canvas Seek Protocol
+  window.addEventListener('hf-seek', function (e) {
+    if (e && e.detail && typeof e.detail.time === 'number') {
+      renderAt(e.detail.time);
+    }
+  });
+
+  // 3. Paused GSAP Root Timeline registered on window.__timelines["main"]
+  window.__timelines = window.__timelines || {};
+  if (typeof gsap !== 'undefined') {
+    const playhead = { t: 0 };
+    const tl = gsap.timeline({ paused: true });
+    tl.to(playhead, {
+      t: TOTAL,
+      duration: TOTAL,
+      ease: 'none',
+      onUpdate: function () { renderAt(playhead.t); }
+    }, 0);
+    window.__timelines['main'] = tl;
+    tl.seek(0);
+  }
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { renderAt(0); });
+  } else {
+    renderAt(0);
+  }
+})();
+</script>
+</body>
+</html>
 ```
 
-### 3.2 Batched Puppeteer -> FFmpeg `image2pipe` Exporter (`render_mp4.js`)
+### 3.2 HyperFrames Auto-Sync (`sync_hyperframes.js`) & CLI Wrapper (`hf.js`)
 
-Step `BATCH = 12` frames per `page.evaluate` call returning base64 JPEG data URLs (`canvas.toDataURL('image/jpeg', 0.92)`), and stream decoded buffers into:
+After running `generate_audio.js` (which writes `timeline.json`), always run `node sync_hyperframes.js` to copy `Kanit` `.woff2` fonts into `assets/fonts/` and inject the exact `data-duration` plus scene `.clip` markers (`<= 3` per track lane so `timeline_track_too_dense` is never triggered) into `index.html`:
+
+```javascript
+// sync_hyperframes.js — Synchronize timeline.json + Kanit fonts into index.html
+const fs = require('fs');
+const path = require('path');
+
+const dir = __dirname;
+const tlPath = path.join(dir, 'timeline.json');
+const htmlPath = path.join(dir, 'index.html');
+
+// 1. Localize Kanit woff2 fonts into assets/fonts/
+const fontsSrcDir = path.join(dir, 'node_modules', '@fontsource', 'kanit', 'files');
+const fontsDstDir = path.join(dir, 'assets', 'fonts');
+if (fs.existsSync(fontsSrcDir)) {
+  fs.mkdirSync(fontsDstDir, { recursive: true });
+  for (const file of fs.readdirSync(fontsSrcDir)) {
+    if ((file.startsWith('kanit-thai-') || file.startsWith('kanit-latin-')) && file.endsWith('-normal.woff2')) {
+      fs.copyFileSync(path.join(fontsSrcDir, file), path.join(fontsDstDir, file));
+    }
+  }
+}
+
+const tl = JSON.parse(fs.readFileSync(tlPath, 'utf8'));
+const total = Number(tl.total.toFixed(3));
+
+// 2. Build scene track markers (<= 3 per lane for 0 lint warnings) + data-beat attributes
+const sceneClips = tl.scenes.map((s, idx) => {
+  const num = String(idx + 1).padStart(2, '0');
+  const start = Number(s.start.toFixed(3));
+  const dur = Number(s.dur.toFixed(3));
+  const trackIdx = 1 + Math.floor(idx / 3);
+  const safeView = String(s.view).replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `  <div id="scene-${num}-${safeView}" class="clip" data-start="${start}" data-duration="${dur}" data-track-index="${trackIdx}" data-track-kind="graphics" data-beat="s${num}:${safeView}" data-layout-ignore style="pointer-events:none;"></div>`;
+}).join('\n');
+
+const audioTrackIdx = 1 + Math.ceil(tl.scenes.length / 3);
+let html = fs.readFileSync(htmlPath, 'utf8');
+
+const newRootBlock = `<div
+  id="root"
+  data-composition-id="main"
+  data-start="0"
+  data-duration="${total}"
+  data-width="1280"
+  data-height="720"
+  data-fps="24"
+>
+  <canvas
+    id="stage"
+    class="clip"
+    data-start="0"
+    data-duration="${total}"
+    data-track-index="0"
+    data-layout-ignore
+    data-hold
+    width="1280"
+    height="720"
+  ></canvas>
+${sceneClips}
+  <audio
+    id="master-audio"
+    class="clip"
+    data-start="0"
+    data-duration="${total}"
+    data-track-index="${audioTrackIdx}"
+    data-volume="1"
+    src="audio/master.wav"
+  ></audio>
+</div>`;
+
+html = html.replace(/<div\s+id="root"[\s\S]*?<\/div>\s*(?=<script src="timeline\.js">)/, newRootBlock + '\n\n');
+fs.writeFileSync(htmlPath, html, 'utf8');
+console.log(`[HyperFrames Sync] Updated index.html -> duration=${total}s, scenes=${tl.scenes.length}`);
+```
+
+```javascript
+// hf.js — HyperFrames CLI Wrapper with automatic ffmpeg-static & ffprobe-static PATH injection
+const path = require('path');
+const { spawnSync } = require('child_process');
+
+const extraPaths = [];
+try { const ffmpegPath = require('ffmpeg-static'); if (ffmpegPath) extraPaths.push(path.dirname(ffmpegPath)); } catch (_) {}
+try { const ffprobe = require('ffprobe-static'); if (ffprobe?.path) extraPaths.push(path.dirname(ffprobe.path)); } catch (_) {}
+
+const env = { ...process.env };
+const pathKey = Object.keys(env).find(k => k.toLowerCase() === 'path') || 'PATH';
+if (extraPaths.length > 0) {
+  env[pathKey] = extraPaths.join(path.delimiter) + path.delimiter + (env[pathKey] || '');
+}
+
+const args = process.argv.slice(2);
+const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const res = spawnSync(cmd, ['hyperframes', ...args], {
+  cwd: __dirname,
+  env,
+  stdio: 'inherit',
+  shell: process.platform === 'win32'
+});
+process.exit(res.status ?? 0);
+```
+
+### 3.3 Batched Puppeteer -> FFmpeg `image2pipe` Exporter (`render_mp4.js`) or `node hf.js render`
+
+You can render the final MP4 using either our batched `image2pipe` exporter (`node render_mp4.js`) OR HyperFrames' multi-worker renderer (`node hf.js render -f 24 -q looks -w 4 -o output.mp4`). For `render_mp4.js`, step `BATCH = 12` frames per `page.evaluate` call returning base64 JPEG data URLs (`canvas.toDataURL('image/jpeg', 0.92)`), and stream decoded buffers into:
 
 ```bash
 ffmpeg -y -f image2pipe -vcodec mjpeg -r 24 -i - -i audio/master.wav \

@@ -2,12 +2,13 @@
 name: reallens-horror-animator
 description: >-
   ระบบสร้างแอนิเมชัน 2.5D Canvas แนวสยองขวัญเชิงวิเคราะห์และเอาชีวิตรอดด้วยตรรกะ (สไตล์ Real Lens)
-  พร้อมระบบ 2-Segment FK Walk Cycle, Dual-System Object Manipulation, HUD Telemetry และ Pipeline เรนเดอร์ MP4 16:9 / Shorts 9:16
+  พร้อมระบบ 2-Segment FK Walk Cycle, Dual-System Object Manipulation, HUD Telemetry,
+  การผสานระบบ HyperFrames (Studio Preview / Check / Snapshot / Multi-Worker Render) และ Pipeline เรนเดอร์ MP4 16:9 / Shorts 9:16
 ---
 
 # Real Lens (@real_lens1) 2.5D Geometric Survival & Horror Animation Skill
 
-This skill encodes the complete visual architecture, narrative pacing, UI/HUD card system, unified `gemini-3.8-flash-tts` audio pipeline, deterministic HTML5-to-MP4 renderer, and vertical Shorts multi-episode adaptation workflow for the **"Real Lens" (@real_lens1)** and **"Rules of Survival / Liminal Space" (เช่น "7 วัน ติดอยู่ในห้างร้างไร้ทางออก")** YouTube animation style.
+This skill encodes the complete visual architecture, narrative pacing, UI/HUD card system, unified `gemini-3.8-flash-tts` audio pipeline, **HyperFrames (`npx hyperframes`) composition & Studio integration**, deterministic HTML5-to-MP4 renderer, and vertical Shorts multi-episode adaptation workflow for the **"Real Lens" (@real_lens1)** and **"Rules of Survival / Liminal Space" (เช่น "7 วัน ติดอยู่ในห้างร้างไร้ทางออก")** YouTube animation style.
 
 Unlike static AI image-slideshow channels, this style uses **procedural 2D flat-vector paper-cutout rigging with 2.5D depth-of-field (DoF), volumetric lighting cones, scientific/rules-of-survival HUD overlays, calculated quantitative math, and deadpan first-person narration**.
 
@@ -18,9 +19,10 @@ Unlike static AI image-slideshow channels, this style uses **procedural 2D flat-
 ### 1.1 Project Initialization & Dependencies
 ```bash
 npm init -y
-npm install puppeteer-core ffmpeg-static @fontsource/kanit
+npm install puppeteer-core ffmpeg-static ffprobe-static @fontsource/kanit
 export GEMINI_API_KEY="your-api-key"
 ```
+*(ติดตั้ง `ffprobe-static` คู่กับ `ffmpeg-static` เสมอ เพื่อให้ `npx hyperframes check`, `audio` และ `render` ตรวจสอบและประมวลผลไฟล์เสียงได้โดยไม่ต้องตั้งค่า Global PATH ใน Windows)*
 
 ### 1.2 Multi-Theme & Entity Archetypes (Presets)
 
@@ -137,12 +139,48 @@ Read [Pipeline & Tooling Guide](./references/pipeline-and-tooling.md) for the co
 
 ---
 
-## 6. End-to-End Deliverables: MP4, Vertical Shorts (`EP 1–5`) & Covers
+## 6. HyperFrames Integration (`heygen-com/hyperframes` Studio & CLI Contract)
+
+ทุกโปรเจกต์ที่สร้างด้วยสกิลนี้ต้องเขียน `index.html` ให้รองรับ **Dual-Mode (HyperFrames Studio/CLI + Standalone Puppeteer Exporter)** เพื่อให้สามารถเปิดแก้ไขไทม์ไลน์ใน HyperFrames Studio (`node hf.js preview`), ตรวจเช็กความถูกต้อง (`node hf.js lint` & `node hf.js check`), แคปภาพเฟรมสำคัญ (`node hf.js snapshot`), และเรนเดอร์แบบขนานหลาย Worker (`node hf.js render -w 4`) ได้ทันทีโดยมี **0 Lint Errors และ 0 Warnings**:
+
+### 6.1 กฎเหล็ก 6 ข้อของ HyperFrames Contract สำหรับ `reallens-horror-animator`
+1. **Root Composition Wrapper (`#root`):**
+   - ต้องมี `<div id="root" data-composition-id="main" data-start="0" data-duration="<TOTAL>" data-width="1280" data-height="720" data-fps="24">` เป็นตัวครอบหลัก
+2. **Canvas Element (`#stage`) พร้อม `data-layout-ignore` และ `data-hold`:**
+   - `<canvas id="stage" class="clip" data-start="0" data-duration="<TOTAL>" data-track-index="0" data-layout-ignore data-hold width="1280" height="720"></canvas>`
+   - **สำคัญมาก:** ต้องใส่ `data-hold` บน `<canvas id="stage">` เสมอ เพื่อบอกระบบตรวจ Craft ของ `npx hyperframes check` ว่ากล่อง DOM ของ `<canvas>` อยู่กับที่โดยตั้งใจในขณะที่ภาพเคลื่อนไหวถูกวาดภายใน Canvas2D (ป้องกันคำเตือน `dead_stretch`)
+3. **Scene Timeline Markers (`#scene-XX-<view>`) จัดกลุ่มไม่เกิน 3 ฉากต่อ Track Lane:**
+   - สร้าง `<div id="scene-01-..." class="clip" data-start="..." data-duration="..." data-track-index="${1 + Math.floor(idx / 3)}" data-track-kind="graphics" data-beat="s01:..." data-layout-ignore style="pointer-events:none;"></div>`
+   - การแบ่ง `data-track-index` ไม่ให้เกิน 3 คลิปต่อแทร็ก จะทำให้ `npx hyperframes lint` ผ่าน `0 warnings` (ไม่ติด `timeline_track_too_dense`) และทำให้ `node hf.js timeline` กับ `node hf.js snapshot --review` มองเห็นทุกฉากครบถ้วน
+4. **Master Audio Element (`#master-audio`) แบบ Declarative ล้วน:**
+   - `<audio id="master-audio" class="clip" data-start="0" data-duration="<TOTAL>" data-track-index="<N>" data-volume="1" src="audio/master.wav"></audio>`
+   - **ห้าม** เขียนโค้ด `audio.play()`, `audio.pause()`, `audio.currentTime = ...`, `requestAnimationFrame`, หรือ CSS `transition` ใน `index.html` เพราะจะผิดกฎ `imperative_media_control`, `requestanimationframe_in_composition`, และ `css_transition_used` ของ HyperFrames Linter
+5. **Local `@font-face` สำหรับฟอนต์ภาษาไทย (`Kanit`):**
+   - คัดลอกไฟล์ `kanit-thai-*-normal.woff2` และ `kanit-latin-*-normal.woff2` จาก `node_modules/@fontsource/kanit/files/` ไปยัง `assets/fonts/` และประกาศ `@font-face` ใน `index.html` (ห้ามใช้ `<link href="https://fonts.googleapis.com/...">` ลอยๆ เพราะจะติด `font_family_without_font_face`)
+6. **Triple-Adapter Seek Bridge (`hf-seek` + `window.__timelines["main"]` + `window.renderAtTime`):**
+   - ลงทะเบียนทั้ง 3 ช่องทางใน `index.html`:
+     - `window.addEventListener('hf-seek', e => renderAt(e.detail.time))` สำหรับ HyperFrames Canvas Adapter
+     - `window.__timelines['main'] = tl` (GSAP `gsap.timeline({ paused: true })` ที่สั่ง `renderAt(playhead.t)` ใน `onUpdate`) สำหรับ HyperFrames Studio Scrubber
+     - `window.renderAtTime = renderAt` และ `window.seekTo = renderAt` สำหรับ `audit_all_scenes.js` และ `render_mp4.js`
+
+### 6.2 ระบบซิงก์อัตโนมัติ (`sync_hyperframes.js`) และ CLI Wrapper (`hf.js`)
+- หลังจากรัน `generate_audio.js` จนได้ `timeline.json` แล้ว ให้รัน `node sync_hyperframes.js` เสมอ เพื่อคัดลอกฟอนต์ `Kanit` ลง `assets/fonts/` และอัปเดตค่า `data-duration` รวมถึงสร้าง `<div id="scene-XX-...">` ลงใน `index.html` โดยอัตโนมัติ
+- ใช้สคริปต์ `node hf.js <command>` (ซึ่งผูกพาธของ `ffmpeg-static` และ `ffprobe-static` เข้ากับ `process.env.PATH` ให้อัตโนมัติ) สำหรับรันคำสั่ง HyperFrames ทุกชนิดบน Windows:
+  - `node hf.js lint` — ตรวจโครงสร้าง HTML/CSS/JS ตามสัญญาของ HyperFrames (`0 errors, 0 warnings`)
+  - `node hf.js check` — ตรวจครบ 7 หมวด: Lint, Runtime, Layout, Motion, Contrast, Craft และ Audio (`Check passed`)
+  - `node hf.js timeline` — แสดงแผนผังไทม์ไลน์ของทุกฉากและไฟล์เสียงในเทอร์มินัล
+  - `node hf.js snapshot --at 5,60,180 --no-end` หรือ `node hf.js snapshot --review` — แคปภาพเฟรมพร้อมสร้าง `contact-sheet.jpg` ลงใน `.hyperframes/artifacts/snapshots/`
+  - `node hf.js preview` — เปิด **HyperFrames Studio** เพื่อพรีวิว เลื่อนสครับไทม์ไลน์ และแก้ไขแบบอินเทอร์แอคทีฟ
+  - `node hf.js render -f 24 -q looks -w 4 -o output_hf.mp4` — เรนเดอร์วิดีโอ MP4 แบบขนานหลาย Worker (หรือใช้ `node render_mp4.js` ก็ได้เช่นกัน)
+
+---
+
+## 7. End-to-End Deliverables: MP4, Vertical Shorts (`EP 1–5`) & Covers
 
 Read [Shorts & Thumbnails Guide](./references/shorts-and-thumbnails.md) for FFmpeg filter graphs and Puppeteer templates.
 
-1. **Interactive HTML5 Player & Full `16:9` MP4 (`index.html` + `render_mp4.js`):**
-   - Modular `episode.js` (script + SFX cues), `core.js` (2.5D rigs + HUD renderer), `views.js` (story-specific scene renderers), `timeline.js`, and deterministic `24/30 FPS` Puppeteer-to-FFmpeg `image2pipe` export at `loudnorm=I=-18:TP=-1.5:LRA=11`.
+1. **HyperFrames-Compliant HTML5 Composition & Full `16:9` MP4 (`index.html`, `sync_hyperframes.js`, `hf.js`, `render_mp4.js`):**
+   - Modular `episode.js` (script + SFX cues), `core.js` (2.5D rigs + HUD renderer), `views.js` (story-specific scene renderers), `timeline.js`, synchronized `index.html` (passing `node hf.js lint` & `node hf.js check` with 0 errors/warnings), and deterministic `24/30 FPS` MP4 export via `node render_mp4.js` or `node hf.js render -f 24 -q looks -w 4 -o <video.mp4>`.
 2. **Long-Form YouTube Thumbnails (`1920x1080`) + SEO Package:**
    - Generate **2 variants** tailored to the story's setting and main threat:
      - (A) **Showdown / Confrontation Split (The Signature Real Lens Thumbnail):** Protagonist vs. the story's Entity in the story's environment, Rule 1 card top-left, Telemetry + Distance pill top-right, Giant bold white title with red neon glow + yellow quote banner bottom.
@@ -158,20 +196,22 @@ Read [Shorts & Thumbnails Guide](./references/shorts-and-thumbnails.md) for FFmp
 
 ---
 
-## 7. End-to-End Production Checklist & Mandatory Visual QA Gate
+## 8. End-to-End Production Checklist & Mandatory Visual QA Gate
 
 When creating a new Real Lens episode from scratch, execute this exact 7-phase pipeline:
 
 ```
-[Phase 1: Script] ─► [Phase 2: Audio] ─► [Phase 3: Views] ─► [Phase 4: Audit Grid] ─► [Phase 5: MP4] ─► [Phase 6: Thumbs/Shorts] ─► [Phase 7: Final QA]
-  Story-Specific       Gemini 3.8 TTS      2.5D Visual Style    audit_all_scenes.png     Puppeteer Pipe     16:9 + EP 1–5 (9:16)        inspect_video.js
-  Rules & Math         EBU -18 LUFS        Story Camera Shots   Read & Verify Every      Deterministic      Covers + Captions           16/16 PASS (0 Black)
+[Phase 1: Script] ─► [Phase 2: Audio] ─► [Phase 3: Views+HF] ─► [Phase 4: HF Check & Grid] ─► [Phase 5: MP4] ─► [Phase 6: Thumbs/Shorts] ─► [Phase 7: Final QA]
+  Story-Specific       Gemini 3.8 TTS      2.5D Visual Style      node hf.js lint & check      render_mp4.js /    16:9 + EP 1–5 (9:16)        inspect_video.js
+  Rules & Math         EBU -18 LUFS        sync_hyperframes.js    audit_all_scenes.png         hf.js render       Covers + Captions           16/16 PASS (0 Black)
 ```
 
 1. **Phase 1 — Story-Specific Narrative & Scripting (`episode.js`):** Draft 25–30 scenes (~5:30–6:30 min) tailored to the user's story prompt (Rules, Quantitative Math, Setting-Native Clues, Logical Twist).
 2. **Phase 2 — Voiceover & Sound Design (`generate_audio.js`):** Synthesize narration via `gemini-3.8-flash-tts` first (`voice: "Puck"`), use SHA-256 audio cache, wrap RIFF headers, normalize to `-18 LUFS`, slice Thai subtitles ($\le 36$ chars), mix story-matched procedural SFX/ambience, and output `timeline.json` + `timeline.js`.
-3. **Phase 3 — 2.5D Rigging & Story-Driven Scene Views (`core.js`, `views.js`, `index.html`):** Use the canonical `backrooms-mall-7days` (`8DT1Q3NAgaA`) 2.5D visual engine in `core.js`, and design story-native camera angles and environments in `views.js` (zero copied mall tropes!).
-4. **Phase 4 — Mandatory Pre-Render All-Scene Visual Audit (`audit_all_scenes.png`):** Render a grid image showing every single scene (`1..N`) with its scene ID and `s.view` name, and inspect it visually with `read_file` to confirm 0 distorted faces, 0 floating severed arms, 0 black scenes, and 0 missing view mappings before rendering MP4.
-5. **Phase 5 — Deterministic Video Render (`render_mp4.js`):** Step Puppeteer in frame batches (`24/30 FPS`) and stream into FFmpeg `image2pipe` + `master.wav` (`-18 LUFS`).
+3. **Phase 3 — 2.5D Rigging, Scene Views & HyperFrames Sync (`core.js`, `views.js`, `index.html`, `sync_hyperframes.js`, `hf.js`):** Use the canonical `backrooms-mall-7days` (`8DT1Q3NAgaA`) 2.5D visual engine in `core.js`, design story-native camera angles and environments in `views.js` (zero copied mall tropes!), and run `node sync_hyperframes.js` to localize Kanit `.woff2` fonts and stamp exact scene/audio timing into `index.html`.
+4. **Phase 4 — Mandatory Pre-Render HyperFrames Gate & All-Scene Visual Audit (`node hf.js lint`, `audit_all_scenes.png`):**
+   - Run `node hf.js lint` (and optionally `node hf.js check` / `node hf.js snapshot`) to verify **0 errors, 0 warnings** against the HyperFrames contract.
+   - Render a grid image (`audit_all_scenes.png`) showing every single scene (`1..N`) with its scene ID and `s.view` name, and inspect it visually with `read_file` to confirm 0 distorted faces, 0 floating severed arms, 0 black scenes, and 0 missing view mappings before rendering MP4.
+5. **Phase 5 — Deterministic Video Render (`render_mp4.js` or `node hf.js render`):** Step Puppeteer in frame batches (`24/30 FPS`) and stream into FFmpeg `image2pipe` + `master.wav` (`-18 LUFS`), or render via `node hf.js render -f 24 -q looks -w 4 -o <video.mp4>`.
 6. **Phase 6 — Long-Form Thumbnails & Vertical Shorts (`generate_thumbnail.js`, `render_all_shorts.js`, `generate_scene_covers.js`):** Render Showdown & 5-Panel thumbnails (`1920x1080`), 5 vertical Shorts (`1080x1920`), and 5 vertical covers.
 7. **Phase 7 — Final Automated QA Gate (`inspect_video.js`):** Run `node inspect_video.js <video.mp4>` and `node inspect_video.js shorts/<ep1.mp4> --shorts` and verify **16/16 PASS (`100% PRODUCTION READY & COMPLIANT`)** with **0 Unintended Black Intervals**.
