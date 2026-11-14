@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html
+  lang="th"
+  data-composition-variables='[
+    {"id":"title","type":"string","label":"Episode Title","default":"Real Lens Survival Horror"},
+    {"id":"shortsMode","type":"boolean","label":"Vertical Shorts Mode","default":false}
+  ]'
+>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280, height=720" />
+<title>Real Lens 2.5D Survival Horror (HyperFrames)</title>
+<script src="assets/vendor/gsap.min.js"></script>
+<style>
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-400-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-400-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 500;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-500-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-500-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 600;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-600-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-600-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 700;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-700-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-700-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 800;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-800-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-800-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Kanit";
+    font-style: normal;
+    font-weight: 900;
+    font-display: block;
+    src: url("assets/fonts/kanit-thai-900-normal.woff2") format("woff2"),
+         url("assets/fonts/kanit-latin-900-normal.woff2") format("woff2");
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1280px;
+    height: 720px;
+    background: #070A12;
+    color: #FAF6EE;
+    font-family: "Kanit", sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  #root {
+    position: relative;
+    width: 1280px;
+    height: 720px;
+    overflow: hidden;
+    background: #0B1320;
+  }
+  #stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1280px;
+    height: 720px;
+    background: #0B1320;
+    display: block;
+    z-index: 1;
+  }
+</style>
+</head>
+<body>
+<!-- HF:ROOT_START -->
+<div
+  id="root"
+  data-composition-id="main"
+  data-start="0"
+  data-duration="30"
+  data-width="1280"
+  data-height="720"
+  data-fps="24"
+>
+  <canvas
+    id="stage"
+    class="clip"
+    data-start="0"
+    data-duration="30"
+    data-track-index="0"
+    data-layout-ignore
+    data-hold
+    width="1280"
+    height="720"
+  ></canvas>
+  <audio
+    id="master-audio"
+    class="clip"
+    data-start="0"
+    data-duration="30"
+    data-track-index="1"
+    data-volume="1"
+    src="audio/master.wav"
+  ></audio>
+</div>
+<!-- HF:ROOT_END -->
+
+<script src="timeline.js"></script>
+<script src="core.js"></script>
+<script src="views.js"></script>
+<script>
+(function () {
+  const TL = window.TIMELINE || { total: 30, scenes: [] };
+  const cvs = document.getElementById('stage');
+  const ctx = cvs.getContext('2d');
+  const TOTAL = TL.total || 30;
+  const SCENES = TL.scenes || [];
+
+  // Read HyperFrames composition variables if provided (--variables / Studio panel)
+  if (window.__hyperframes && typeof window.__hyperframes.getVariables === 'function') {
+    const vars = window.__hyperframes.getVariables() || {};
+    if (typeof vars.shortsMode === 'boolean') window.SHORTS_MODE = vars.shortsMode;
+  }
+
+  function findScene(t) {
+    if (SCENES.length === 0) return null;
+    t = clamp(t, 0, Math.max(0, TOTAL - 0.001));
+    for (let i = SCENES.length - 1; i >= 0; i--) {
+      if (t >= SCENES[i].start) return SCENES[i];
+    }
+    return SCENES[0];
+  }
+
+  function renderAt(t) {
+    t = clamp(t, 0, TOTAL);
+    const s = findScene(t);
+    if (!s) return;
+    const lt = Math.max(0, t - s.start);
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const viewMap = window.VIEWS || (typeof VIEWS !== 'undefined' ? VIEWS : {});
+    const fn = viewMap[s.view] || viewMap[SCENES[0].view];
+    const activeCard = typeof normalizeCard === 'function' ? normalizeCard(s) : s.card;
+    const noBlurViews = window.NO_BLUR_VIEWS || [];
+
+    let rackBlur = 0;
+    if (activeCard && !noBlurViews.includes(s.view) && activeCard.type !== 'inventory') {
+      const at = activeCard.at !== undefined ? activeCard.at : 0.4;
+      const ca = prog(lt, at, at + 0.45) * (1 - 0.85 * prog(lt, s.dur - 0.32, s.dur));
+      rackBlur = ca * (activeCard.type === 'flow' ? 5.5 : 3.5);
+    }
+
+    if (fn) {
+      if (rackBlur > 0.35) {
+        blurLayer(ctx, rackBlur, (b) => fn(b, lt, s), `brightness(${(1 - rackBlur * 0.035).toFixed(2)})`);
+      } else {
+        fn(ctx, lt, s);
+      }
+    }
+
+    const fadeIn  = prog(lt, 0, 0.14);
+    const fadeOut = 1 - prog(lt, s.dur - 0.14, s.dur);
+    const edgeFade = Math.min(fadeIn, fadeOut);
+
+    if (s.chapter) drawChapter(ctx, s.chapter, lt);
+    drawTele(ctx, s, lt);
+    if (activeCard) drawCard(ctx, activeCard, lt, s.dur);
+    grain(ctx, t, 0.04);
+
+    if (edgeFade < 1) {
+      ctx.fillStyle = `rgba(10,14,22,${(1 - edgeFade) * 0.38})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    drawSub(ctx, s, lt);
+    ctx.restore();
+  }
+
+  // 1. Standalone Puppeteer API (audit_all_scenes.js & render_mp4.js)
+  window.__setHeadless = function () { document.body.classList.add('headless', 'export-mode'); };
+  window.seekTo = function (t) { renderAt(t); };
+  window.renderAtTime = function (t) { renderAt(t); };
+  window.__TOTAL_DURATION = TOTAL;
+
+  // 2. Native HyperFrames Canvas Seek Protocol
+  window.addEventListener('hf-seek', function (e) {
+    if (e && e.detail && typeof e.detail.time === 'number') {
+      renderAt(e.detail.time);
+    }
+  });
+
+  // 3. Paused GSAP Root Timeline registered LAST on window.__timelines["main"]
+  window.__timelines = window.__timelines || {};
+  if (typeof gsap !== 'undefined') {
+    const playhead = { t: 0 };
+    const tl = gsap.timeline({ paused: true });
+    tl.to(playhead, {
+      t: TOTAL,
+      duration: TOTAL,
+      ease: 'none',
+      onUpdate: function () { renderAt(playhead.t); }
+    }, 0);
+    window.__timelines['main'] = tl;
+    tl.seek(0);
+  }
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { renderAt(0); });
+  } else {
+    renderAt(0);
+  }
+})();
+</script>
+</body>
+</html>
