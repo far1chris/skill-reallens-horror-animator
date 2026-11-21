@@ -14,7 +14,7 @@ Complete production workflow for **"Real Lens" (@real_lens1)** style 2.5D surviv
 
 > **Clean Cinematic Video Rule (NO Infographics / NO Telemetry / NO Red `บทนำ` Pills):**
 > Keep inside-story frames **100% clean**: render ONLY pure animated horror artwork + atmosphere + clean frameless subtitles (`drawSub`). **STRICTLY DISABLED inside story videos:**
-> - **ห้ามวาดฉากอธิบายแบบอินโฟกราฟิก/สไลด์เลกเชอร์** (เช่น กล่องข้อความแบ่งข้อ `1..2..3`, กราฟสรุป, แผนผังความรู้, หรือมือชี้ปากกาเลกเชอร์ใส่กระดานข้อมูลใน `views.js`)
+> - **ห้ามวาดฉากอธิบายแบบอินโฟกราฟิก/สไลด์เลกเชอร์/กระดานลูกศรปลอมตัว** (เช่น กล่องข้อความแบ่งข้อ `1..2..3`, กราฟสรุป, แผนผังความรู้, หรือ **กระดาน/แผ่นเสื่อสี่เหลี่ยมกลางจอ `rr(c, 120, 70, ...)` ที่มีเส้นประลูกศร `setLineDash` + `hand({ marker })` ชี้อธิบาย** — ทุกการกระทำทางกายภาพเช่นผูกเกี๊ยะเปลือกไม้, ตรวจรอยเท้า, หรือหยิบจับวัตถุ ต้องวางบนพื้นดินหรือตัวละครในโลกจริงของฉากเท่านั้น)
 > - **ห้ามใส่กล่อง Telemetry มุมขวาบน (`s.telemetry`), การ์ดอธิบาย/กฎ/คณิตศาสตร์/ผังเลือก (`s.hud` / `s.card` -> `drawTele` / `drawCard` / `drawFlow` ปิดเป็นค่าเริ่มต้นแล้ว)**
 > - **ห้ามใส่ป้ายแถบสีแดงคำว่า `บทนำ · COLD OPEN` หรือ `องก์ที่ ...` (`drawChapter` ถูกปิดถาวร และห้ามใส่ `chapter:` ใน `episode.js`)**
 
@@ -57,29 +57,39 @@ export GEMINI_API_KEYS="key_proj1,key_proj2,key_proj3"
 ## 1. Visual DNA & Art Direction (Golden Rule)
 
 > ### ⚠️ GOLDEN RULE: แยก "เอนจินภาพ (Visual Engine)" ออกจาก "การดำเนินเรื่องและมุมกล้อง (Story & Camera Identity)"
-> 1. **ห้ามคัดลอกพร็อพข้ามเรื่อง:** ต้นฉบับ `backrooms-mall-7days` เป็นเพียงมาตรฐานเอนจิน 2.5D (`core.js`) เท่านั้น **ห้ามคัดลอกพล็อตหรือพร็อพเฉพาะของเรื่องเก่า** (ประตูเหล็กม้วนร้านค้า, ห้องลองเสื้อ, เสา `C-13`, เทปแปะแขน, ขนมปังหมดอายุ 31 ก.พ., ภารโรงถือไม้ถูพื้น) ไปใส่ในเรื่องอื่นเด็ดขาด (`corridor()` และ `drawEntity()` ปิดประตูร้านค้าและไม้ถูพื้นเป็นค่าเริ่มต้นแล้ว)
-> 2. **ห้ามใช้แพตเทิร์นมุมกล้องหรือพิกัดตัวละครซ้ำกันทุกเรื่อง:** ห้ามก๊อปปี้ลำดับฉากหรือพิกัด `(x, y, scale)` จาก `views.example.js` ไปใช้ซ้ำตรงๆ แต่ละเรื่องต้องออกแบบ **Staging & Camera Grammar** ของตัวเองตามสภาพแวดล้อมจริง (เช่น เรื่องในทะเลใช้ `outdoorStage({ water: true })`, เรื่องในห้องควบคุมใช้ `roomCorner()` + `cctvOverlay()`, เรื่องวางแผนหลบหนีใช้ `topDownRoom()`)
+> 1. **ห้ามอ่าน ก๊อปปี้ หรือถอดแบบโครงสร้าง `episode.js` / `views.js` ข้ามเรื่องเด็ดขาด:** ห้ามเปิดอ่านหรือลอกสูตรจัดฉาก/มุมกล้องจากเรื่องเก่าบนดิสก์ (ไม่ว่าจะเป็น `backrooms-mall-7days`, `reallens-phi-mae-mai-80s`, `reallens-phi-pao-famine`, `reallens-phi-kong-koi`, `krasue-under-stilts` หรือเรื่องอื่น) รวมทั้งห้ามคัดลอกพร็อพเฉพาะเรื่อง (`rolling shutters`, `C-13`, `fittingRoom`, `31 Feb`, ม็อบถูพื้น, ผ้าปูเล็บแดง, กอหญ้า/กระดานลูกศรเดิม) ไปใส่เรื่องใหม่ (`corridor()` และ `drawEntity()` ปิดประตูร้านค้าและไม้ถูพื้นเป็นค่าเริ่มต้นแล้ว)
+> 2. **ห้ามใช้ "สูตรโครงบท + มุมกล้องสยองขวัญซ้ำ" (Zero Repeated Beat Formula):**
+>    - **ห้าม** เปิดเรื่องด้วยภาพ ECU อวัยวะ (มือ/เท้า) ยื่นออกจากขอบเสื่อ/ผ้าห่มที่พิกัดคล้าย `(540, 540)` + ไฟ/ตะเกียงส้มมุมซ้ายบน แล้ววนกลับมาจบด้วย ECU จุดเดิม
+>    - **ห้าม** ตั้งสูตรสัมภาษณ์พยานผมหงอกนั่งม้านั่งในมุมห้อง `roomCorner()` + ตะเกียงผนังซ้าย ให้เล่าพยานใน **สถานที่จริงตามเนื้อเรื่อง** (เช่น ริมชานเรือนใต้ถุน `drawStiltHouse()`, ริมท่าน้ำ, ทางเดินคันนา, โขดหินริมกองไฟ)
+>    - **ห้าม** ใช้เส้นแบ่ง `W/2` สีแดงแบบ `Split-Screen` เป็นท่าคั่นมาตรฐาน ให้สลับไปใช้ **มุม 3-Plane Foreground Occlusion POV** (แอบมองลอดปล้องไม้ไผ่, เสาเรือน, ซี่หน้าต่าง, หรือกิ่งไม้ใกล้เลนส์เข้าไปยังความลึกกลางและหลัง)
+> 3. **ห้ามคิดว่ารายชื่อ Stage Builders คือเช็กลิสต์ 7 ข้อที่ต้องใส่ให้ครบทุกเรื่อง:** ออกแบบ **Location-Native Camera Bible** เฉพาะของแต่ละเรื่องตั้งแต่ต้น
 
 ### 1.1 Authentic Character & POV Rigs ([`templates/core.js`](./templates/core.js))
 Always use the canonical functions in `core.js`—never improvise body proportions or face coordinates:
 - **Protagonist (`drawPerson` — `1:6.5` Ratio):** `hipY = -92 + by`, `torsoH = 64`, legs `45 + 45`, arms `32 + 30`, continuous trapezius collar slope, `52x62` capsule head shaded with `cyl()`. Customize `colors: { shirt, shirtHi, shirtSh, pants, pantsSh }` per story protagonist so every episode's hero has a distinct outfit!
-- **Symmetrical Eyes (`[-10, 10]`):** Dark pupils `#141414` with `1px` white highlight dot, periodic blink `(t % 3.7) < 0.12`, under-eye fatigue crescents `rgba(70,30,20,0.22–0.45)`, and flat stoic mouth (`ellipse` only on `shock`/`fear`).
+- **Symmetrical Eyes (`[-10, 10]`):** Dark pupils `#141414` with `1px` white highlight dot, periodic blink `(t % 3.7) < 0.12`, under-eye fatigue crescents `rgba(70,30,20,0.22–0.45)`, and flat stoic mouth (`ellipse` only on `shock`/`fear`). When `profile`, `flashlight`, `torch`, or `gazeForward` is enabled, `isSideGaze` turns the head cleanly into 3/4 forward gaze aligned with the beam.
 - **2-Segment FK Poses & Generalized Entity (`drawEntity` / `drawJanitor`):** `poseWalk()` clamps knee flexion via `Math.max(0, ...)` so legs never invert forward (`flamingo` bug). Default `poseSit()` uses natural open `L`-bend angles (`b <= a`, never backward `<` heel tuck; pass `{ curb: true }` on low steps or `poseSquat()` on flat ground) and always sits on a drawn surface under `hipY`. `drawEntity()` defaults to **no mop (`prop: 'none'`) and no cap (`cap: false`)** so threats match your story's lore (only `drawJanitor()` enables mop/cap). Entity arms strictly enforce Z-index layering (`suitSh` far arm $\rightarrow$ prop $\rightarrow$ `suitHi` near arm).
-- **Macro POV Forearm (`hand()`):** Strictly `400px` long (`rr(c, -26, 0, 52, 400, 22)`) anchored off the canvas bottom/side edge (`y = 760..820`)—never a short floating arm. Writing/taping macro scenes must tie `ctx.clip()` reveal strictly to the pen/tape tip coordinate.
+- **Macro POV Forearm (`hand()`):** Strictly `400px` long (`rr(c, -26, 0, 52, 400, 22)`) anchored off the canvas bottom/side edge (`y = 760..820`)—never a short floating arm. Use `hand()` ONLY for **genuine in-world physical interaction** (holding a flashlight/torch, gripping a knife/rope, opening a latch, touching real mud/bark/grass)—**NEVER for drawing dashed diagram arrows (`setLineDash`) or pointing `marker` at a centered rectangle board/map**.
 
 ### 1.2 Multi-Environment Stages & Story-Specific Camera Grammar (`views.js`)
 Never use pure `#000000` for night backgrounds/water (causes `ffmpeg blackdetect` failures). Use visible slate-indigo/deep-teak midtones (`#162030`, `#1E293B`, `#283040`, `#3B281B`) across **4 depth planes**.
 
-Instead of defaulting to `corridor()` in every scene, build each story's visual world from `core.js`'s **5 distinct spatial stage builders** + custom Canvas2D geometry:
-1. **Open Exterior / Maritime / Wilderness (`outdoorStage(c, t, { water, horizonY, ridgeH })`):** Wide horizon, parallax mountain/city silhouettes, animated water waves, extreme wide shots, or low water-level angles.
-2. **2-Point Room / Cabin / Control Booth (`roomCorner(c, { cornerX, topY, botY })`):** Asymmetric two-wall interior corners for claustrophobic rooms, offices, shelters, or ship cabins.
-3. **Top-Down / Tactical Blueprint (`topDownRoom(c, { x, y, w, h, grid })`):** Bird's-eye spatial layout for patrol routes, sound-radius rings, flood/heat spread, or room-to-room evasion.
-4. **Surveillance / Peephole / Lens POV (`cctvOverlay(c, t, { camLabel })`):** Security camera feeds, submarine periscopes, dashcams, bodycams, or thermal monitors.
-5. **1-Point Perspective Tunnel / Hallway (`corridor(c, t, o)`):** Plain industrial tunnels, subway platforms, or parking garages (`parking: true`, `mallShops: true` **only** in malls). Vary camera height (`camH: 0.6` low ground-level vs `camH: 3.4` high security-cam angle) and vanishing point (`vx: 380..900`, `vy: 180..440`) so perspective shots never look identical!
-6. **First-Person Macro POV (`hand()`):** Setting-native surfaces (control console, radio transceiver, wet deck, surgical tray, compass) with `ctx.clip()` progressive action.
-7. **Split-Screen / Simultaneous Threat View:** Left half showing protagonist's hiding spot (`c.clip()`) while right half shows the threat/hazard approaching in real time.
+The stage builders below in `core.js` are **optional setting-appropriate tools—NOT a mandatory checklist**: use ONLY the builders that physically match your episode's real locations:
+1. **Open Exterior / Rural / Wilderness (`outdoorStage(c, t, { water, horizonY, ridgeH })` + Rural Thai Builders):** Wide horizon, silhouettes, mist, and waves; for Thai rural settings compose natively with `drawStiltHouse(c, t, o)`, `drawSugarPalm(c, x, y, s, sway)`, `drawRiceClump(c, x, y, s, t, seed, litWarm)`, `drawBananaCluster(c, x, y, s, t)`, and `drawDikeGrass(c, x, y, s, seed, warm)`.
+2. **2-Point Indoor Room / Cabin (`roomCorner(c, { cornerX, topY, botY })`):** Strictly for **enclosed interior rooms**—never force outdoor wilderness witnesses into `roomCorner()` just for an interview shot; stage outdoor witnesses on open stilts, riverbanks, campfire clearings, or paddy dikes.
+3. **Top-Down Architectural Blueprint (`topDownRoom(c, { x, y, w, h, grid })`):** Strictly for **enclosed walled interiors** (offices, prison cells, control booths)—**NEVER use `topDownRoom()` for outdoor forest camps, clearings, or nature scenes** (walled edges look unnatural outdoors!). For bird's-eye outdoor shots, draw natural terrain/canopy directly without `topDownRoom()`.
+4. **Surveillance / Optical Lens POV (`cctvOverlay(c, t, { camLabel })`):** Only when the story actually features security feeds, bodycams, trailcams, or binoculars.
+5. **1-Point Perspective Tunnel / Hallway (`corridor(c, t, o)`):** Plain industrial tunnels, subway platforms, or parking garages (`parking: true`, `mallShops: true` **only** in malls). Vary camera height (`camH: 0.6` vs `3.4`) and vanishing point (`vx: 380..900`, `vy: 180..440`).
+6. **Setting-Native Physical Action (`hand()` & In-World Framing):** Show tools, bindings, tracks, or clues directly on dirt, water, porch floorboards, or tables inside the live scene—not floating explainer cards.
+7. **3-Plane Foreground Occlusion POV (Preferred over `Split-Screen`):** Frame tension by shooting past blurred/dark foreground silhouettes (bamboo culms, timber stilts, foliage fronds, window slats) toward midground characters and background threats rather than slicing frames down `W/2` with red lines.
 
-> **Anti-Repetition Camera & Motion Rule:** Never repeat the same camera angle or stage builder for more than 2 consecutive scenes, never place the protagonist at the exact same `(x, y, scale)` across consecutive scenes, and **never leave a frame static for `> 3s`** — wrap scenes with `cameraRig(c, lt, s.dur, { zoomFrom: 1.015, zoomTo: 1.08, focusX, snapAt, shakeAt })` so the camera subtly pushes in, drifts, or snap-zooms on beats.
+> **Vertical Camera Pitch & Horizon Diversity Rule (NO 80% Flat Eye-Level `horizonY = 410..460`):**
+> Never let an episode fall into flat eye-level side views (`horizonY = 410..460`, characters anchored at `y = 500..560`) across most scenes. Explicitly cycle **vertical pitch & horizon altitude** alongside `cameraRig(c, lt, s.dur, ...)`:
+> 1. **Worm's-Eye / Low Ground Pitch (`horizonY = 550..640`):** Camera hugging mud/roots/water/under-stilts looking steeply upward at trees, stilts, or canopy threats.
+> 2. **High Steep Diagonal Down-Angle (`horizonY = 120..220`):** Looking steeply downward from treetops, stilt decks, or ridge slopes onto characters/terrain below.
+> 3. **Foreground Occlusion Depth:** Heavy foreground silhouettes along `x = 0..220` or `1060..1280` partially hiding or framing the subject.
+> 4. **Dutch Angle Tilt (`c.rotate(±0.05..0.08)`):** Subtle horizon roll during panic, disorientation, or sudden discovery beats.
+> 5. **Anti-Repetition Guard:** Never repeat the same camera angle, horizon band, or `(x, y, scale)` placement across consecutive scenes, and **never leave a frame static for `> 3s`**.
 
 ### 1.3 Mandatory Anti-Distortion & Signature Guardrails
 1. **Canonical Signatures:**
@@ -104,9 +114,9 @@ Read [`references/visual-and-hud-specs.md`](./references/visual-and-hud-specs.md
 | Story Archetype | Core Dramatic Engine | Clean Narrative Flow (Zero HUD / Zero Infographic) | Signature Visual Camera Style |
 | :--- | :--- | :--- | :--- |
 | **1. กฎสถานที่ปิด (Rules & Contradiction)** | กฎหรือคำเตือนในสถานที่ขัดแย้งกันเอง จนต้องตัดสินใจว่าความจริงคืออะไร | **0–3s Peak Anomaly Cold Open** (เสียงเคาะ/เงาผิดปกติ) $\rightarrow$ ย้อนเหตุการณ์ $\rightarrow$ พบหลักฐาน/สภาพคนที่ไม่รอด $\rightarrow$ วินาทีเผชิญหน้า & หักมุม | มุมแอบมองผ่านช่องประตู/หน้าต่าง, `roomCorner()`, `cctvOverlay()`, แสงไฟกะพริบ |
-| **2. ภัยธรรมชาติ/เอาชีวิตรอด (Survival & Hazards)** | สู้กับภัยรอบตัว (หนาวจัด, น้ำท่วม, ห้องปิดตาย, หลบหนี) แสดงผลผ่านภาพตรง ๆ ไม่ขึ้นกราฟ/สไลด์ | **0–3s Crisis Peak Cold Open** (ลมโหม/น้ำทะลัก/ไฟดับ) $\rightarrow$ ย้อนต้นเหตุ $\rightarrow$ ลงมือแก้สถานการณ์ด้วยวัตถุจริงในฉาก $\rightarrow$ วินาทีรอดหวุดหวิดหรือพลิกล็อก | `outdoorStage()`, `topDownRoom()`, แสงเงาสิ่งแวดล้อม, โคลสอัพมือจับอุปกรณ์จริง |
+| **2. ภัยธรรมชาติ/เอาชีวิตรอด (Survival & Hazards)** | สู้กับภัยรอบตัว (หนาวจัด, น้ำท่วม, ห้องปิดตาย, หลบหนี) แสดงผลผ่านภาพตรง ๆ ไม่ขึ้นกราฟ/สไลด์ | **0–3s Crisis Peak Cold Open** (ลมโหม/น้ำทะลัก/ไฟดับ) $\rightarrow$ ย้อนต้นเหตุ $\rightarrow$ ลงมือแก้สถานการณ์ด้วยวัตถุจริงในฉาก $\rightarrow$ วินาทีรอดหวุดหวิดหรือพลิกล็อก | `outdoorStage()`, `topDownRoom()` (เฉพาะห้องปิดมีผนัง), แสงเงาสิ่งแวดล้อม, โคลสอัพมือจับอุปกรณ์จริง |
 | **3. ปริศนาและลูปเวลา (Mystery & Twist)** | รายละเอียดรอบตัวเพี้ยนไปทีละนิด ต้องสังเกตเบาะแสจากฉากและวัตถุ | **0–3s Paradox Twist Cold Open** (พบวัตถุ/ตั๋ว/ข้อความผิดเวลา) $\rightarrow$ ย้อนสำรวจจุดเกิดเหตุ $\rightarrow$ เบาะแสเปลี่ยนไปทีละฉาก $\rightarrow$ เฉลยหักมุม | เปรียบเทียบมุมกล้องเดิมที่รายละเอียดเปลี่ยนไป, `hand()` ถือวัตถุจริง, มุมมองกระจกสะท้อน |
-| **4. ซ่อนหาและไล่ล่า (Stealth & Pursuit)** | ภัยคุกคามคืบคลานเข้าใกล้ ต้องซ่อนตัวและคุมจังหวะหนีในความมืด | **0–3s Close-Call Peak Cold Open** (เสียงฝีเท้า/เงาประชิด) $\rightarrow$ ย้อนที่มา $\rightarrow$ ลอบเคลื่อนที่ผ่านหลายโซน $\rightarrow$ เผชิญหน้าฉากจบ | มุมต่ำระดับพื้นใต้โต๊ะ/ช่องแอร์ (`camH: 0.6`), Split-screen ตัวเอกซ่อน vs เงาเดินผ่าน, OTS ระยะประชิด |
+| **4. ซ่อนหาและไล่ล่า (Stealth & Pursuit)** | ภัยคุกคามคืบคลานเข้าใกล้ ต้องซ่อนตัวและคุมจังหวะหนีในความมืด | **0–3s Close-Call Peak Cold Open** (เสียงฝีเท้า/เงาประชิด) $\rightarrow$ ย้อนที่มา $\rightarrow$ ลอบเคลื่อนที่ผ่านหลายโซน $\rightarrow$ เผชิญหน้าฉากจบ | มุมเสยต่ำจากพื้น/ใต้โต๊ะ (`camH: 0.6`), มุมแอบมองลอดสิ่งกีดขวาง 3-Plane Foreground Occlusion, OTS ระยะประชิด |
 
 ---
 

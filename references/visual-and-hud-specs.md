@@ -76,10 +76,12 @@ See [`templates/core.js`](../templates/core.js) for the full production implemen
 
 ## 5. Story-Driven Camera Direction & All-Scene Visual Audit
 
-Never copy mall-specific props (`tiles`, `C-13`, `fittingRoom`, `31 Feb` expiry cards) into unrelated stories. Compose every view in `views.js` using setting-native surfaces and varied camera angles (1-pt/2-pt 3D perspective, high establishing wide, Over-the-Shoulder, water/ground low-angle, architectural frame-within-a-frame, Macro POV, and physics diagrams).
+- **Never clone previous episodes (`views.js` / `episode.js`):** Never read or copy beat progressions, props (`tiles`, `C-13`, `fittingRoom`, `31 Feb`, recurring blanket-limb ECU cold opens/finales, elder-on-bench `roomCorner()` interviews, or vertical `W/2` red-line split screens) from past stories.
+- **Stage builders are optional, never a 7-item checklist:** Use `topDownRoom()` and `roomCorner()` **only** for enclosed rooms with real walls (never in forest camps or open nature), and stage `hand()` strictly on real physical objects inside the live world (**no centered diagram mats `rr(c, 120, 70, ...)` with dashed `setLineDash` arrows and `marker` pointing**).
+- **Vertical Pitch & Horizon Diversity:** Avoid leaving 80% of scenes at flat eye-level (`horizonY = 410..460`). Vary across **Worm's-Eye (`horizonY = 550..640`)**, **High Steep Down-Angle (`horizonY = 120..220`)**, **3-Plane Foreground Occlusion** (bamboo/stilts/foliage framing), **Dutch Angles**, and Macro POV, using setting-native geometry (`outdoorStage()`, Rural Thai Builders, etc.).
 
 Before rendering any MP4, always generate and visually inspect the full-scene contact sheet:
 ```bash
 node audit_all_scenes.js
 ```
-Open `audit_all_scenes.png` with `read_file` to verify zero fallback views, zero distorted faces, zero severed arms, zero dark/black frames, and zero HUD text clipping.
+Open `audit_all_scenes.png` with `read_file` to verify zero fallback views, zero distorted faces, zero severed arms, zero dark/black frames, zero disguised diagram boards, and zero HUD text clipping.
