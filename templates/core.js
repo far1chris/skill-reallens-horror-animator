@@ -68,13 +68,31 @@ function cyl(c, x, w, base, hi, sh) {
   const g = c.createLinearGradient(x, 0, x + w, 0);
   g.addColorStop(0, base); g.addColorStop(0.35, hi); g.addColorStop(1, sh); return g;
 }
-function limb(c, x1, y1, x2, y2, w, col, sh) {
+function limb(c, x1, y1, x2, y2, w, col, sh, opts = {}) {
+  const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
+  const nx = -dy / L, ny = dx / L;
   c.lineCap = 'round';
-  c.strokeStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
-  if (sh) {
-    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1, nx = -dy / L * w * 0.28, ny = dx / L * w * 0.28;
-    c.strokeStyle = sh; c.lineWidth = w * 0.38; c.beginPath(); c.moveTo(x1 + nx, y1 + ny); c.lineTo(x2 + nx, y2 + ny); c.stroke();
+  if (opts.contour !== false) {
+    c.strokeStyle = 'rgba(8, 10, 16, 0.24)';
+    c.lineWidth = w + 2.0;
+    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
   }
+  c.strokeStyle = col; c.lineWidth = w;
+  c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+  if (sh) {
+    const sx = nx * w * 0.28, sy = ny * w * 0.28;
+    c.strokeStyle = sh; c.lineWidth = w * 0.38;
+    c.beginPath(); c.moveTo(x1 + sx, y1 + sy); c.lineTo(x2 + sx, y2 + sy); c.stroke();
+  }
+  // Delicate rim highlight along lit edge
+  const rx = -nx * w * 0.34, ry = -ny * w * 0.34;
+  c.strokeStyle = 'rgba(255, 245, 230, 0.14)'; c.lineWidth = Math.max(1.2, w * 0.16);
+  c.beginPath(); c.moveTo(x1 + rx, y1 + ry); c.lineTo(x2 + rx, y2 + ry); c.stroke();
+}
+function limbContour2(c, x1, y1, x2, y2, x3, y3, w) {
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  c.strokeStyle = 'rgba(8, 10, 16, 0.44)'; c.lineWidth = w + 2.4;
+  c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.lineTo(x3, y3); c.stroke();
 }
 function txt(c, s, x, y, size, col, weight = 700, align = 'left', base = 'alphabetic') {
   c.font = `${weight} ${size}px ${FONT}`; c.fillStyle = col; c.textAlign = align; c.textBaseline = base; c.fillText(s, x, y);
@@ -270,7 +288,9 @@ function drawPerson(c, x, y, s, o = {}) {
   };
   const leg = (hx, L, col, sh) => {
     const { kx, ky, ax, ay } = legPts(hx, L);
-    limb(c, hx, hipY, kx, ky, 16 * thin, col, sh); limb(c, kx, ky, ax, ay, 14 * thin, col, sh);
+    limbContour2(c, hx, hipY, kx, ky, ax, ay, 16 * thin);
+    limb(c, hx, hipY, kx, ky, 16 * thin, col, sh, { contour: false });
+    limb(c, kx, ky, ax, ay, 14 * thin, col, sh, { contour: false });
     c.fillStyle = K.shoe; rr(c, ax - 6, ay - 5, 22, 9, 4); c.fill();
   };
   const sh = (i) => [14 * thin * (i ? -1 : 1) * 0.3, -144 + by];
@@ -278,8 +298,12 @@ function drawPerson(c, x, y, s, o = {}) {
     const [sx, sy] = sh(i);
     const ex = sx + 32 * Math.sin(A.a), ey = sy + 32 * Math.cos(A.a);
     const fa = A.a + A.b, wx = ex + 30 * Math.sin(fa), wy = ey + 30 * Math.cos(fa);
-    limb(c, sx, sy, ex, ey, 13 * thin, col, K.shirtSh); limb(c, ex, ey, wx, wy, 11 * thin, K.skin, K.skinSh);
-    c.fillStyle = K.skin; c.beginPath(); c.arc(wx, wy, 6.5, 0, TAU); c.fill();
+    limbContour2(c, sx, sy, ex, ey, wx, wy, 13 * thin);
+    limb(c, sx, sy, ex, ey, 13 * thin, col, K.shirtSh, { contour: false });
+    limb(c, ex, ey, wx, wy, 11 * thin, K.skin, K.skinSh, { contour: false });
+    c.fillStyle = K.skinSh; c.beginPath(); c.arc(wx, wy + 0.8, 7.1, 0, TAU); c.fill();
+    c.fillStyle = K.skin; c.beginPath(); c.arc(wx, wy, 6.4, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(8, 10, 16, 0.34)'; c.lineWidth = 1.2; c.stroke();
     return [wx, wy, fa];
   };
 
@@ -302,11 +326,20 @@ function drawPerson(c, x, y, s, o = {}) {
   // Front leg drawn underneath draped sinh if wearing Thai skirt
   if (o.sinh) leg(6, P.legs[0], K.skin, K.skinSh);
 
-  // Torso (with female cut, swollen belly, or traditional shoulder sash)
+  // Torso (with female cut, swollen belly, structured collar & fold accents)
   c.save(); c.rotate(lean);
   const chestW = (isFem ? 38 : 44) * thin, chestX = -chestW / 2;
   const hipW = (isFem ? 44 : 42) * thin;
   c.fillStyle = cyl(c, chestX, chestW, K.shirt, K.shirtHi, K.shirtSh); rr(c, chestX, -152 + by, chestW, torsoH, 12); c.fill();
+  c.strokeStyle = 'rgba(8, 10, 16, 0.38)'; c.lineWidth = 1.8; c.stroke();
+  // Subtle rim edge on lit shoulder/side & shirt chest/waist tension folds
+  c.strokeStyle = 'rgba(255, 245, 230, 0.14)'; c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(chestX + 3, -146 + by); c.lineTo(chestX + 3, -104 + by); c.stroke();
+  c.strokeStyle = 'rgba(0, 0, 0, 0.14)'; c.lineWidth = 1.5; c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(-chestW * 0.24, -126 + by); c.quadraticCurveTo(-2, -121 + by, chestW * 0.14, -125 + by);
+  c.moveTo(-chestW * 0.18, -111 + by); c.quadraticCurveTo(4, -107 + by, chestW * 0.22, -112 + by);
+  c.stroke();
   if (o.swollenBelly) {
     c.fillStyle = cyl(c, -12, 38, K.shirt, K.shirtHi, K.shirtSh);
     c.beginPath(); c.ellipse(9 * thin, -110 + by, 18, 15, 0.12, 0, TAU); c.fill();
@@ -324,9 +357,17 @@ function drawPerson(c, x, y, s, o = {}) {
     // Dangling end at hip
     c.fillStyle = sashCol; rr(c, hipW * 0.32, -96 + by, 9, 28, 3); c.fill();
   }
-  c.strokeStyle = 'rgba(0,0,0,0.12)'; c.lineWidth = 2; c.beginPath(); c.moveTo(-7, -152 + by); c.lineTo(0, -142 + by); c.lineTo(7, -152 + by); c.stroke();
+  // Structured Collar / Lapel & Neck-to-Clavicle Shadow
+  c.fillStyle = 'rgba(0,0,0,0.22)';
+  c.beginPath(); c.moveTo(-9, -152 + by); c.lineTo(0, -138 + by); c.lineTo(9, -152 + by); c.closePath(); c.fill();
+  c.fillStyle = K.shirtHi;
+  c.beginPath(); c.moveTo(-11, -152 + by); c.lineTo(-15, -144 + by); c.lineTo(-2, -140 + by); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(11, -152 + by); c.lineTo(15, -144 + by); c.lineTo(2, -140 + by); c.closePath(); c.fill();
+  c.strokeStyle = 'rgba(8, 10, 16, 0.32)'; c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(-11, -152 + by); c.lineTo(-15, -144 + by); c.lineTo(0, -139 + by); c.lineTo(15, -144 + by); c.lineTo(11, -152 + by); c.stroke();
   if (o.tapeArm) { c.fillStyle = '#C3C7CC'; for (let k = 0; k < 3; k++) { rr(c, -20 * thin, -140 + by + k * 14, 40 * thin, 7, 2); c.fill(); } }
   c.fillStyle = K.skin; rr(c, -6, -162 + by, 12, 14, 3); c.fill();
+  c.fillStyle = 'rgba(70, 30, 20, 0.28)'; rr(c, -6, -162 + by, 12, 5, 2); c.fill();
 
   // Head
   c.save(); c.translate(0, -190 + by); c.rotate(P.tilt || 0);
@@ -336,7 +377,36 @@ function drawPerson(c, x, y, s, o = {}) {
     c.strokeStyle = '#3F2E21'; c.lineWidth = 2;
     c.beginPath(); c.ellipse(o.back ? 0 : -18, -17, 7, 10, -0.25, 0, TAU); c.stroke();
   }
+  // Ears with inner-ear shadow crescent (peek symmetrically around capsule jaw)
+  if (o.back) {
+    for (const ex of [-25.5, 25.5]) {
+      c.fillStyle = K.skinSh; c.beginPath(); c.ellipse(ex, -1, 4.5, 8.5, 0, 0, TAU); c.fill();
+    }
+  } else {
+    c.fillStyle = K.skinSh; c.beginPath(); c.ellipse(-25.5, -1, 4.5, 8.5, -0.08, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(10, 12, 18, 0.35)'; c.lineWidth = 1.4; c.stroke();
+    c.strokeStyle = 'rgba(70, 30, 20, 0.38)'; c.lineWidth = 1.3;
+    c.beginPath(); c.arc(-25.2, -1, 4.2, -1.1, 1.2); c.stroke();
+    if (!o.profile) {
+      c.fillStyle = K.skin; c.beginPath(); c.ellipse(25.2, -1, 4.0, 8.0, 0.08, 0, TAU); c.fill();
+      c.strokeStyle = 'rgba(10, 12, 18, 0.32)'; c.lineWidth = 1.3; c.stroke();
+    }
+  }
   c.fillStyle = cyl(c, -26, 52, K.skin, K.skinHi, K.skinSh); rr(c, -26, -32, 52, 62, 22); c.fill();
+  // Directional cheek/jaw rim-light clipped inside head capsule + soft outer contour
+  c.save(); c.clip();
+  c.strokeStyle = 'rgba(255, 228, 196, 0.28)'; c.lineWidth = 3.2;
+  c.beginPath();
+  if (o.profile) {
+    c.moveTo(22, -24); c.quadraticCurveTo(25.5, 0, 16, 26);
+  } else {
+    c.moveTo(-22, -24); c.quadraticCurveTo(-25.5, 0, -16, 26);
+  }
+  c.stroke();
+  c.restore();
+  rr(c, -26, -32, 52, 62, 22);
+  c.strokeStyle = 'rgba(10, 12, 18, 0.38)'; c.lineWidth = 1.8; c.stroke();
+
   c.fillStyle = K.hair;
   if (o.back) {
     if (hairStyle === 'long') {
@@ -348,6 +418,8 @@ function drawPerson(c, x, y, s, o = {}) {
     } else {
       rr(c, -27, -35, 54, 54, [22, 22, 14, 14]); c.fill();
     }
+    c.strokeStyle = 'rgba(255, 255, 255, 0.11)'; c.lineWidth = 2.2; c.lineCap = 'round';
+    c.beginPath(); c.arc(0, -10, 21, -2.35, -0.78); c.stroke();
   } else {
     if (hairStyle === 'long') {
       c.beginPath();
@@ -365,21 +437,46 @@ function drawPerson(c, x, y, s, o = {}) {
       c.quadraticCurveTo(-16, -20, -27, -8);
       c.closePath(); c.fill();
     } else {
-      rr(c, -28, -36, 56, 26, [22, 22, 6, 6]); c.fill();
-      c.beginPath(); c.moveTo(-28, -16); c.lineTo(-28, 4); c.lineTo(-22, -12); c.fill();
-      c.beginPath(); c.moveTo(-10, -12); c.lineTo(8, -12); c.lineTo(-4, -4); c.fill();
+      // Clean modern 2-sweep male fringe staying neatly above eyebrows
+      rr(c, -28, -36, 56, 24, [22, 22, 6, 6]); c.fill();
+      c.beginPath(); c.moveTo(-28, -16); c.lineTo(-28, 4); c.lineTo(-22, -12); c.closePath(); c.fill();
+      c.beginPath();
+      c.moveTo(-16, -13); c.quadraticCurveTo(-5, -13, -1, -7.5); c.quadraticCurveTo(4, -12, 11, -14); c.closePath(); c.fill();
+      c.beginPath();
+      c.moveTo(8, -14); c.quadraticCurveTo(17, -14, 21, -9); c.quadraticCurveTo(25, -13, 27, -14); c.closePath(); c.fill();
     }
+    // Soft signature crown highlight arc
+    c.strokeStyle = 'rgba(255, 255, 255, 0.11)'; c.lineWidth = 2.0; c.lineCap = 'round';
+    c.beginPath(); c.arc(-1, -12, 22, -2.35, -0.82); c.stroke();
+
     const fx = o.profile ? 8 : 3, ex = o.expr || 'neutral';
-    const eyeR = ex === 'shock' ? 4.2 : 3.3;
-    // Under-eye fatigue bags
-    c.strokeStyle = o.thin || ex === 'tired' || ex === 'fear' || ex === 'shock' ? 'rgba(70,30,20,0.45)' : 'rgba(70,30,20,0.22)'; c.lineWidth = 2;
-    for (const sx of [-10, 10]) { c.beginPath(); c.arc(sx + fx, 2, 5, 0.2 * Math.PI, 0.8 * Math.PI); c.stroke(); }
-    const blink = o.t != null && (o.t % 3.7) < 0.12;
-    c.fillStyle = '#141414';
+    const eyeR = ex === 'shock' ? 4.2 : 3.4;
+    // Tiny clean minimalist nose-tip accent (no long vertical bridge line)
+    c.fillStyle = 'rgba(70, 30, 20, 0.22)';
+    c.beginPath(); c.ellipse(fx + 1, 5.5, 2.2, 1.1, 0, 0, TAU); c.fill();
+
+    // Single subtle under-eye crescent
+    const darkEye = o.thin || ex === 'tired' || ex === 'fear' || ex === 'shock';
     for (const sx of [-10, 10]) {
-      if (blink || ex === 'squint') { c.fillRect(sx + fx - 3.5, -4, 7, 2); continue; }
+      c.strokeStyle = darkEye ? 'rgba(70,30,20,0.34)' : 'rgba(70,30,20,0.16)'; c.lineWidth = 1.5;
+      c.beginPath(); c.arc(sx + fx, 2, 5.0, 0.22 * Math.PI, 0.78 * Math.PI); c.stroke();
+    }
+    // Signature dark eyes with soft upper-eyelid crease + dual catchlights
+    const blink = o.t != null && (o.t % 3.7) < 0.12;
+    for (const sx of [-10, 10]) {
+      if (blink || ex === 'squint') {
+        c.fillStyle = '#141414'; c.fillRect(sx + fx - 3.6, -4, 7.2, 2); continue;
+      }
+      c.strokeStyle = 'rgba(45, 20, 14, 0.22)'; c.lineWidth = 0.9;
+      c.beginPath(); c.arc(sx + fx, -3.2, eyeR + 1.8, -0.80 * Math.PI, -0.20 * Math.PI); c.stroke();
+      c.fillStyle = '#141414';
       c.beginPath(); c.arc(sx + fx, -3, eyeR, 0, TAU); c.fill();
-      c.fillStyle = '#fff'; c.beginPath(); c.arc(sx + fx + 1.2, -4.3, 1, 0, TAU); c.fill(); c.fillStyle = '#141414';
+      // Primary top-right glint
+      c.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      c.beginPath(); c.arc(sx + fx + 1.2, -4.3, 1.15, 0, TAU); c.fill();
+      // Micro bottom-left secondary catchlight
+      c.fillStyle = 'rgba(220, 238, 255, 0.72)';
+      c.beginPath(); c.arc(sx + fx - 1.1, -1.7, 0.65, 0, TAU); c.fill();
     }
     c.strokeStyle = '#141414'; c.lineWidth = isFem ? 2.1 : 2.6; c.lineCap = 'round';
     const bi = ex === 'fear' || ex === 'shock' ? -3 : ex === 'focus' ? 3 : 0;
@@ -534,13 +631,15 @@ function drawEntity(c, x, y, s, o = {}) {
   const by = P.by || 0, hipY = -96 + by;
   const leg = (hx, L, col) => {
     const kx = hx + 46 * Math.sin(L.a), ky = hipY + 46 * Math.cos(L.a), sa = L.a - L.b, ax = kx + 46 * Math.sin(sa), ay = ky + 46 * Math.cos(sa);
-    limb(c, hx, hipY, kx, ky, 17, col, suitSh); limb(c, kx, ky, ax, ay, 15, col, suitSh);
+    limbContour2(c, hx, hipY, kx, ky, ax, ay, 17);
+    limb(c, hx, hipY, kx, ky, 17, col, suitSh, { contour: false }); limb(c, kx, ky, ax, ay, 15, col, suitSh, { contour: false });
     c.fillStyle = '#121214'; rr(c, ax - 8, ay - 7, 26, 11, 4); c.fill();
   };
   leg(-6, P.legs[1], suitSh);
 
   // 1. Far arm (suitSh)
-  limb(c, 10, -158 + by, 20, -132, 13, suit, suitSh); limb(c, 20, -132, 22, -148, 11, skin);
+  limbContour2(c, 10, -158 + by, 20, -132, 22, -148, 13);
+  limb(c, 10, -158 + by, 20, -132, 13, suit, suitSh, { contour: false }); limb(c, 20, -132, 22, -148, 11, skin, null, { contour: false });
 
   // 2. Prop drawn BEFORE front arm (suitHi) so near palm/sleeve occludes shaft
   // NOTE: Default prop is 'none' so non-janitor entities never hold a mop unless explicitly requested!
@@ -553,17 +652,26 @@ function drawEntity(c, x, y, s, o = {}) {
   }
 
   c.fillStyle = cyl(c, -24, 48, suit, suitHi, suitSh); rr(c, -24, -168 + by, 48, 80, 12); c.fill();
+  c.strokeStyle = 'rgba(5, 7, 12, 0.55)'; c.lineWidth = 2; c.stroke();
+  c.strokeStyle = 'rgba(148, 197, 255, 0.26)'; c.lineWidth = 1.8;
+  c.beginPath(); c.moveTo(-21, -160 + by); c.lineTo(-21, -96 + by); c.stroke();
   if (o.badge === true) { c.fillStyle = '#C9CDD2'; rr(c, 4, -150 + by, 14, 8, 2); c.fill(); }
   leg(6, P.legs[0], suit);
 
   // 3. Front arm (suitHi)
-  limb(c, -6, -158 + by, 4, -128, 13, suitHi, suitSh); limb(c, 4, -128, 18, -142, 11, skin);
+  limbContour2(c, -6, -158 + by, 4, -128, 18, -142, 13);
+  limb(c, -6, -158 + by, 4, -128, 13, suitHi, suitSh, { contour: false }); limb(c, 4, -128, 18, -142, 11, skin, null, { contour: false });
   c.fillStyle = skin; rr(c, -5, -178 + by, 12, 14, 3); c.fill();
 
-  // Head / Mask
+  // Head / Mask (with sunken hollow eye-sockets + eerie cold rim edge)
   c.save(); c.translate(0, -206 + by); c.rotate(o.tilt || 0);
   c.fillStyle = cyl(c, -25, 50, o.headColor || '#DEE1E5', o.headHi || '#F1F3F5', o.headSh || '#B8BEC6');
   rr(c, -25, -30, 50, 60, 22); c.fill();
+  c.strokeStyle = 'rgba(5, 7, 12, 0.5)'; c.lineWidth = 1.8; c.stroke();
+  c.save(); c.clip();
+  c.strokeStyle = 'rgba(148, 197, 255, 0.30)'; c.lineWidth = 3.2;
+  c.beginPath(); c.moveTo(-22, -22); c.quadraticCurveTo(-24.5, 0, -15, 24); c.stroke();
+  c.restore();
   if (o.cap === true) {
     c.fillStyle = o.capColor || '#353B45';
     rr(c, -27, -36, 54, 18, [20, 20, 3, 3]); c.fill();
@@ -572,16 +680,26 @@ function drawEntity(c, x, y, s, o = {}) {
   const rv = o.reveal !== undefined ? o.reveal : 0.85;
   if (rv > 0) {
     c.globalAlpha = rv;
+    // Eerie sunken eye-socket shadow halos
+    for (const sx of [-8, 10]) {
+      const hg = c.createRadialGradient(sx, 0, 2, sx, 0, 12);
+      hg.addColorStop(0, 'rgba(8, 10, 16, 0.58)');
+      hg.addColorStop(1, 'rgba(8, 10, 16, 0)');
+      c.fillStyle = hg; c.beginPath(); c.arc(sx, 0, 12, 0, TAU); c.fill();
+    }
     c.fillStyle = o.eyeColor || '#0B0B0D';
     c.beginPath(); c.ellipse(-8, 0, 5, 8 * rv, 0, 0, TAU); c.fill();
     c.beginPath(); c.ellipse(10, 0, 5, 8 * rv, 0, 0, TAU); c.fill();
+    // Subtle uncanny pinpoint pale glare inside dark sockets
+    c.fillStyle = 'rgba(248, 250, 252, 0.65)';
+    c.beginPath(); c.arc(-7, -2 * rv, 1.1, 0, TAU); c.arc(11, -2 * rv, 1.1, 0, TAU); c.fill();
     if (o.bloodSlits !== false) {
       c.strokeStyle = '#6B0F1A'; c.lineWidth = 2.2;
       c.beginPath(); c.moveTo(-8, 8); c.lineTo(-8, 8 + 14 * rv); c.moveTo(10, 8); c.lineTo(10, 8 + 10 * rv); c.stroke();
     }
     c.globalAlpha = 1;
   } else {
-    c.fillStyle = 'rgba(0,0,0,0.05)'; c.beginPath(); c.ellipse(2, 4, 14, 18, 0, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(0,0,0,0.08)'; c.beginPath(); c.ellipse(2, 4, 14, 18, 0, 0, TAU); c.fill();
   }
   c.restore(); endShortsRigComp(_rc); c.restore();
 }
@@ -608,9 +726,22 @@ function hand(c, x, y, ang = 0, s = 1, o = {}) {
   c.save(); c.translate(x, y); c.rotate(ang); c.scale(s, s);
   c.fillStyle = cyl(c, -26, 52, K.skin, K.skinHi, K.skinSh);
   rr(c, -26, 0, 52, 400, 22); c.fill();
+  c.strokeStyle = 'rgba(8, 10, 16, 0.35)'; c.lineWidth = 2.2; c.stroke();
+  // Subtle forearm rim-light & wrist tendons
+  c.strokeStyle = 'rgba(255, 240, 220, 0.20)'; c.lineWidth = 2.4;
+  c.beginPath(); c.moveTo(-23, 18); c.lineTo(-23, 380); c.stroke();
+  c.strokeStyle = 'rgba(70, 30, 20, 0.20)'; c.lineWidth = 2.0; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(-8, 14); c.lineTo(-10, 66); c.moveTo(6, 16); c.lineTo(8, 62); c.stroke();
+  c.fillStyle = cyl(c, -26, 52, K.skin, K.skinHi, K.skinSh);
   rr(c, -32, -38, 64, 54, 20); c.fill();
+  c.strokeStyle = 'rgba(8, 10, 16, 0.34)'; c.lineWidth = 2.0; c.stroke();
   if (!shaftGrip && !horzGrip) {
-    for (let i = 0; i < 4; i++) { rr(c, -28 + i * 15, -62, 12, 32, 6); c.fill(); }
+    for (let i = 0; i < 4; i++) {
+      c.fillStyle = K.skin; rr(c, -28 + i * 15, -62, 12, 32, 6); c.fill();
+      c.strokeStyle = 'rgba(8, 10, 16, 0.30)'; c.lineWidth = 1.6; c.stroke();
+      c.strokeStyle = 'rgba(70, 30, 20, 0.25)'; c.lineWidth = 1.3;
+      c.beginPath(); c.moveTo(-25 + i * 15, -45); c.lineTo(-19 + i * 15, -45); c.stroke();
+    }
   }
   if (o.sleeve) { c.fillStyle = o.sleeveColor || K.shirt; rr(c, -30, 90, 60, 320, 14); c.fill(); }
   if (o.watch) {
@@ -710,13 +841,24 @@ function corridor(c, t, o = {}) {
     if (z2 < zN) continue;
     segs.push([Math.max(z1, zN), z2, k + Math.floor(camZ / seg)]);
   }
+  const lineColStr = dark ? '148, 197, 255' : '255, 251, 232';
   for (const [z1, z2, id] of segs) {
     const fk = fogK((z1 + z2) / 2);
+    const vis = clamp(1 - fk);
     quad(P(-hw, 0, z1), P(hw, 0, z1), P(hw, 0, z2), P(-hw, 0, z2), mix(pal.floor, pal.fog, fk));
     quad(P(-hw, ceilH, z1), P(hw, ceilH, z1), P(hw, ceilH, z2), P(-hw, ceilH, z2), mix(pal.ceil, pal.fog, fk));
+    const trimCol = mix(pal.ceil, pal.fog, fk);
+    const corniceCol = mix(dark ? '#0A0D14' : '#78725E', pal.fog, fk);
+    const pilasterCol = mix(pal.rib || pal.wallSh, pal.fog, fk);
+    const lineFog = mix(pal.line, pal.fog, fk);
+    const inkRgba = `rgba(7, 9, 15, ${(0.72 * vis).toFixed(3)})`;
+    const rimRgba = `rgba(${lineColStr}, ${(0.24 * vis).toFixed(3)})`;
     for (const side of [-1, 1]) {
       const X = side * hw;
       quad(P(X, 0, z1), P(X, ceilH, z1), P(X, ceilH, z2), P(X, 0, z2), mix(side < 0 ? pal.wall : pal.wallSh, pal.fog, fk));
+      // Architectural baseboard/skirting trim & ceiling cornice shadow
+      quad(P(X, 0, z1), P(X, 0.18, z1), P(X, 0.18, z2), P(X, 0, z2), trimCol);
+      quad(P(X, ceilH - 0.16, z1), P(X, ceilH, z1), P(X, ceilH, z2), P(X, ceilH - 0.16, z2), corniceCol);
       if (o.parking) {
         if (id % 2 === 0) {
           quad(P(X - side * 0.3, 0, z1), P(X - side * 0.3, ceilH, z1), P(X - side * 0.3, ceilH, z1 + 0.5), P(X - side * 0.3, 0, z1 + 0.5), mix('#B9BDC1', pal.fog, fk));
@@ -724,6 +866,30 @@ function corridor(c, t, o = {}) {
         }
         continue;
       }
+      // Dual-tone architectural linework: dark ink edge + crisp 1.2px specular rim highlight
+      c.lineWidth = Math.max(0.7, 1.5 * vis);
+      c.strokeStyle = inkRgba;
+      c.beginPath();
+      c.moveTo(...P(X, 0.18, z1)); c.lineTo(...P(X, 0.18, z2));
+      c.moveTo(...P(X, 1.15, z1)); c.lineTo(...P(X, 1.15, z2));
+      c.moveTo(...P(X, ceilH - 0.16, z1)); c.lineTo(...P(X, ceilH - 0.16, z2));
+      c.stroke();
+
+      c.lineWidth = Math.max(0.5, 1.15 * vis);
+      c.strokeStyle = rimRgba;
+      c.beginPath();
+      c.moveTo(...P(X, 0.16, z1)); c.lineTo(...P(X, 0.16, z2));
+      c.moveTo(...P(X, 1.13, z1)); c.lineTo(...P(X, 1.13, z2));
+      c.stroke();
+
+      // Structural pilaster post with crisp ink contour + camera-facing specular rim
+      const pilZ = Math.min(z2, z1 + 0.14);
+      quad(P(X, 0.18, z1), P(X, ceilH - 0.16, z1), P(X, ceilH - 0.16, pilZ), P(X, 0.18, pilZ), pilasterCol);
+      c.strokeStyle = inkRgba; c.lineWidth = Math.max(0.6, 1.4 * vis);
+      c.beginPath(); c.moveTo(...P(X, 0, z1)); c.lineTo(...P(X, ceilH, z1)); c.moveTo(...P(X, 0.18, pilZ)); c.lineTo(...P(X, ceilH - 0.16, pilZ)); c.stroke();
+      c.strokeStyle = rimRgba; c.lineWidth = Math.max(0.5, 1.2 * vis);
+      c.beginPath(); c.moveTo(...P(X, 0.18, pilZ + 0.02)); c.lineTo(...P(X, ceilH - 0.16, pilZ + 0.02)); c.stroke();
+
       if (o.mallShops === true || o.plainWalls === false) {
         const a = z1 + 0.25, b = z2 - 0.25;
         if (b > a) {
@@ -733,13 +899,40 @@ function corridor(c, t, o = {}) {
           const sc = SIGNS[Math.abs(id * 3 + (side > 0 ? 1 : 0)) % SIGNS.length];
           quad(P(X, 3.1, a), P(X, 3.7, a), P(X, 3.7, b), P(X, 3.1, b), mix(dark ? '#2B2833' : sc, pal.fog, fk));
         }
+      } else {
+        // Signature recessed wall panel frames (กรอบลูกฟักผนัง) + subtle texture ticks
+        const pA = pilZ + 0.16, pB = z2 - 0.16;
+        if (pB > pA + 0.2) {
+          const drawRecess = (y1, y2) => {
+            c.strokeStyle = `rgba(7, 9, 15, ${(0.48 * vis).toFixed(3)})`; c.lineWidth = Math.max(0.5, 1.1 * vis);
+            c.beginPath(); c.moveTo(...P(X, y1, pA)); c.lineTo(...P(X, y2, pA)); c.lineTo(...P(X, y2, pB)); c.lineTo(...P(X, y1, pB)); c.closePath(); c.stroke();
+            c.strokeStyle = `rgba(${lineColStr}, ${(0.13 * vis).toFixed(3)})`; c.lineWidth = Math.max(0.4, 0.9 * vis);
+            c.beginPath(); c.moveTo(...P(X, y1 + 0.03, pA + 0.04)); c.lineTo(...P(X, y1 + 0.03, pB - 0.04)); c.lineTo(...P(X, y2 - 0.03, pB - 0.04)); c.stroke();
+          };
+          drawRecess(1.36, ceilH - 0.42);
+          drawRecess(0.32, 0.96);
+          // Delicate procedural masonry/panel joint tick
+          const tZ = lerp(pA, pB, 0.5), tY = 1.85 + (hash(id * 5.1 + side) - 0.5) * 0.8;
+          c.strokeStyle = `rgba(7, 9, 15, ${(0.24 * vis).toFixed(3)})`; c.lineWidth = Math.max(0.4, 0.9 * vis);
+          c.beginPath(); c.moveTo(...P(X, tY, tZ - 0.15)); c.lineTo(...P(X, tY, tZ + 0.15)); c.stroke();
+        }
       }
     }
-    c.strokeStyle = mix(pal.line, pal.fog, fk); c.lineWidth = 1;
+    c.strokeStyle = lineFog; c.lineWidth = 1;
     c.beginPath(); c.moveTo(...P(-hw, 0, z1)); c.lineTo(...P(hw, 0, z1)); c.stroke();
+    // Subtle perspective floor tile bevel highlight
+    c.strokeStyle = `rgba(${lineColStr}, ${(0.10 * vis).toFixed(3)})`; c.lineWidth = 0.8;
+    c.beginPath(); c.moveTo(...P(-hw, 0, z1 + 0.04)); c.lineTo(...P(hw, 0, z1 + 0.04)); c.stroke();
   }
   c.strokeStyle = rgba(dark ? '#2A2F3E' : '#BCB194', 0.7); c.lineWidth = 1;
   for (let X = -hw; X <= hw; X += 0.8) { c.beginPath(); c.moveTo(...P(X, 0, zN)); c.lineTo(...P(X, 0, zF)); c.stroke(); }
+  // Overhead ceiling conduit pipes running continuously into depth
+  for (const cx of [-0.95, 0.95]) {
+    c.strokeStyle = dark ? 'rgba(6, 8, 14, 0.72)' : 'rgba(90, 84, 68, 0.55)'; c.lineWidth = 3.2;
+    c.beginPath(); c.moveTo(...P(cx, ceilH - 0.05, zN)); c.lineTo(...P(cx, ceilH - 0.05, zF)); c.stroke();
+    c.strokeStyle = `rgba(${lineColStr}, 0.22)`; c.lineWidth = 1.0;
+    c.beginPath(); c.moveTo(...P(cx - Math.sign(cx) * 0.03, ceilH - 0.07, zN)); c.lineTo(...P(cx - Math.sign(cx) * 0.03, ceilH - 0.07, zF)); c.stroke();
+  }
   for (const [z1, z2, id] of segs) {
     const zm = (z1 + z2) / 2; if (zm < 1.3) continue;
     let on = o.lightsOff ? (o.lightsOff(id, zm) ? 0 : 1) : 1;
@@ -750,8 +943,30 @@ function corridor(c, t, o = {}) {
     quad(P(-0.5, ceilH, zm - 0.45), P(0.5, ceilH, zm - 0.45), P(0.5, ceilH, zm + 0.45), P(-0.5, ceilH, zm + 0.45), on > 0.2 ? mix(col.startsWith('rgb') ? '#FFFBE8' : col, pal.fog, fk * 0.5) : col);
     if (on > 0.2) {
       const [fx, fy] = P(0, 0, zm), r = f * 1.6 / zm;
+      const [lx, ly] = P(0, ceilH, zm);
+      // Volumetric trapezoid light cone + drifting dust motes + specular floor reflection
+      const tl = P(-0.48, ceilH, zm), tr = P(0.48, ceilH, zm);
+      const bl = P(-1.85, 0, zm), br = P(1.85, 0, zm);
+      const cg = c.createLinearGradient(0, ly, 0, fy);
+      cg.addColorStop(0, `rgba(255, 246, 216, ${(0.055 * on * (1 - fk)).toFixed(3)})`);
+      cg.addColorStop(1, 'rgba(255, 246, 216, 0)');
+      c.save(); c.globalCompositeOperation = 'screen';
+      c.fillStyle = cg;
+      c.beginPath(); c.moveTo(...tl); c.lineTo(...tr); c.lineTo(...br); c.lineTo(...bl); c.closePath(); c.fill();
+      if (zm < 24) {
+        for (let m = 0; m < 4; m++) {
+          const my = lerp(0.4, ceilH - 0.4, hash(id * 13.7 + m * 5.3));
+          const mx = (hash(id * 7.1 + m * 17.9) - 0.5) * 1.8 + Math.sin(t * 1.3 + id + m) * 0.14;
+          const [dx, dy] = P(mx, my + Math.cos(t * 0.9 + m) * 0.08, zm);
+          c.fillStyle = `rgba(255, 248, 225, ${(0.34 * on * (1 - fk)).toFixed(3)})`;
+          c.beginPath(); c.arc(dx, dy, Math.max(0.8, 3.2 / zm), 0, TAU); c.fill();
+        }
+      }
+      c.fillStyle = `rgba(255, 246, 216, ${(0.14 * on * (1 - fk)).toFixed(3)})`;
+      c.beginPath(); c.ellipse(fx, fy, Math.max(8, f * 0.42 / zm), Math.max(2, f * 0.045 / zm), 0, 0, TAU); c.fill();
+      c.restore();
       c.save(); c.translate(fx, fy); c.scale(1, 0.22); glow(c, 0, 0, r, '#FFF6D8', 0.22 * on * (1 - fk)); c.restore();
-      const [lx, ly] = P(0, ceilH, zm); glow(c, lx, ly, f * 0.9 / zm, '#FFF6D8', 0.35 * on * (1 - fk));
+      glow(c, lx, ly, f * 0.9 / zm, '#FFF6D8', 0.35 * on * (1 - fk));
     }
   }
   return P;
@@ -766,23 +981,96 @@ function outdoorStage(c, t, o = {}) {
   g.addColorStop(0, skyTop); g.addColorStop(1, skyBot);
   c.fillStyle = g; c.fillRect(0, 0, W, horizonY);
 
-  // Distant silhouette ridge / skyline / treeline parallax
+  // Subtle twinkling night sky star / atmospheric dust particles
+  if (o.stars !== false) {
+    for (let i = 0; i < 28; i++) {
+      const sx = hash(i * 19.7) * W;
+      const sy = hash(i * 31.3) * horizonY * 0.82;
+      const tw = 0.14 + 0.42 * (0.5 + 0.5 * Math.sin(t * 2.1 + i * 3.1));
+      c.fillStyle = `rgba(226, 238, 255, ${tw.toFixed(3)})`;
+      c.beginPath(); c.arc(sx, sy, 0.8 + hash(i * 5.9) * 1.0, 0, TAU); c.fill();
+    }
+  }
+
+  // Layered cloud-band ink wisps across upper night sky
   const pan = (o.panSpeed || 12) * t;
-  c.fillStyle = o.ridgeCol || mix(skyBot, '#090D16', 0.48);
+  if (o.clouds !== false) {
+    for (let i = 0; i < 4; i++) {
+      const cy = horizonY * (0.20 + i * 0.12);
+      const cw = 210 + (i % 2) * 90;
+      const cx = ((hash(i * 23.1) * W - pan * (0.18 + i * 0.04)) % (W + cw * 2) + W + cw * 2) % (W + cw * 2) - cw;
+      c.fillStyle = 'rgba(15, 24, 38, 0.38)';
+      c.beginPath(); c.ellipse(cx, cy, cw * 0.5, 11 + i * 2, 0, 0, TAU); c.fill();
+      c.strokeStyle = 'rgba(186, 230, 253, 0.16)'; c.lineWidth = 1.1;
+      c.beginPath(); c.moveTo(cx - cw * 0.42, cy - 2); c.quadraticCurveTo(cx, cy - 12 - i * 2, cx + cw * 0.42, cy - 2); c.stroke();
+    }
+  }
+
+  // Overhead sagging utility / spirit-cord lines spanning across upper sky
+  if (o.wires !== false) {
+    for (const [y1, sag, y2] of [[54, 42, 72], [74, 54, 96]]) {
+      c.strokeStyle = 'rgba(7, 10, 16, 0.72)'; c.lineWidth = 1.6;
+      c.beginPath(); c.moveTo(-20, y1); c.quadraticCurveTo(W * 0.52, y1 + sag, W + 20, y2); c.stroke();
+      c.strokeStyle = 'rgba(186, 230, 253, 0.14)'; c.lineWidth = 0.8;
+      c.beginPath(); c.moveTo(-20, y1 - 1); c.quadraticCurveTo(W * 0.52, y1 + sag - 1, W + 20, y2 - 1); c.stroke();
+    }
+  }
+
+  // 2-Layer Multi-Plane Parallax Silhouette Ridge + Moonlit Rim Edge & Organic Treeline Tufts
+  const rH = o.ridgeH || 48;
+  c.fillStyle = mix(skyBot, '#090D16', 0.25);
   c.beginPath(); c.moveTo(0, horizonY);
-  for (let x = 0; x <= W + 80; x += 80) {
-    const h = 18 + hash(Math.floor((x + pan) / 80) * 7.1) * (o.ridgeH || 48);
+  for (let x = 0; x <= W + 90; x += 90) {
+    const h = 24 + hash(Math.floor((x + pan * 0.45) / 90) * 5.3) * (rH * 1.15);
     c.lineTo(x, horizonY - h);
   }
   c.lineTo(W, horizonY); c.closePath(); c.fill();
+
+  const ridgePts = [];
+  for (let x = 0; x <= W + 64; x += 64) {
+    const h = 14 + hash(Math.floor((x + pan) / 64) * 7.1) * rH;
+    ridgePts.push([x, horizonY - h]);
+  }
+  c.fillStyle = o.ridgeCol || mix(skyBot, '#090D16', 0.52);
+  c.beginPath(); c.moveTo(0, horizonY);
+  for (const [rx, ry] of ridgePts) c.lineTo(rx, ry);
+  c.lineTo(W, horizonY); c.closePath(); c.fill();
+
+  // Crisp dark ink shadow + moonlit rim-edge highlight tracing top contour of nearer ridge
+  c.strokeStyle = 'rgba(6, 8, 14, 0.75)'; c.lineWidth = 2.0; c.lineJoin = 'round';
+  c.beginPath();
+  ridgePts.forEach(([rx, ry], idx) => idx === 0 ? c.moveTo(rx, ry + 1.5) : c.lineTo(rx, ry + 1.5));
+  c.stroke();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.25)'; c.lineWidth = 1.4;
+  c.beginPath();
+  ridgePts.forEach(([rx, ry], idx) => idx === 0 ? c.moveTo(rx, ry) : c.lineTo(rx, ry));
+  c.stroke();
+
+  // Organic treeline / bamboo foliage tufts along ridge horizon
+  c.fillStyle = o.ridgeCol || mix(skyBot, '#090D16', 0.55);
+  for (let idx = 1; idx < ridgePts.length - 1; idx += 2) {
+    const [tx, ty] = ridgePts[idx];
+    for (const [dx, th] of [[-12, 16], [0, 22], [11, 14]]) {
+      c.beginPath(); c.moveTo(tx + dx - 8, ty + 6); c.quadraticCurveTo(tx + dx, ty - th, tx + dx + 8, ty + 6); c.closePath(); c.fill();
+    }
+    c.strokeStyle = 'rgba(186, 230, 253, 0.18)'; c.lineWidth = 1.0;
+    c.beginPath(); c.moveTo(tx - 8, ty + 2); c.quadraticCurveTo(tx, ty - 22, tx + 8, ty + 2); c.stroke();
+  }
 
   // Ground or Animated Water Plane
   const gg = c.createLinearGradient(0, horizonY, 0, H);
   gg.addColorStop(0, groundCol); gg.addColorStop(1, mix(groundCol, '#090D16', 0.45));
   c.fillStyle = gg; c.fillRect(0, horizonY, W, H - horizonY);
 
+  // Horizon atmospheric mist glow band
+  const hg = c.createLinearGradient(0, horizonY - 38, 0, horizonY + 28);
+  hg.addColorStop(0, 'rgba(148, 175, 205, 0)');
+  hg.addColorStop(0.55, 'rgba(148, 175, 205, 0.14)');
+  hg.addColorStop(1, 'rgba(148, 175, 205, 0)');
+  c.fillStyle = hg; c.fillRect(0, horizonY - 38, W, 66);
+
   if (o.water) {
-    c.strokeStyle = o.waveCol || 'rgba(125,211,252,0.18)'; c.lineWidth = 2;
+    c.strokeStyle = o.waveCol || 'rgba(125,211,252,0.20)'; c.lineWidth = 2;
     for (let r = 0; r < 9; r++) {
       const wy = horizonY + 18 + r * r * 3.4;
       if (wy > H) break;
@@ -792,6 +1080,44 @@ function outdoorStage(c, t, o = {}) {
         c.moveTo(x + shift, wy); c.lineTo(x + shift + 36 + r * 4, wy);
       }
       c.stroke();
+    }
+  }
+
+  // Stylized drifting low ground/water mist ribbons with subtle moonlit top edge
+  for (let m = 0; m < 2; m++) {
+    const my = horizonY + 34 + m * 46;
+    const mxOff = Math.sin(t * 0.55 + m * 2.1) * 45;
+    const mg = c.createLinearGradient(0, my - 18, 0, my + 22);
+    mg.addColorStop(0, 'rgba(148, 163, 184, 0)');
+    mg.addColorStop(0.5, 'rgba(148, 163, 184, 0.08)');
+    mg.addColorStop(1, 'rgba(148, 163, 184, 0)');
+    c.fillStyle = mg; c.fillRect(Math.max(0, mxOff), my - 18, W - Math.abs(mxOff), 40);
+    c.strokeStyle = 'rgba(186, 230, 253, 0.12)'; c.lineWidth = 1.1;
+    c.beginPath();
+    c.moveTo(120 + mxOff, my - 4);
+    c.quadraticCurveTo(W * 0.5 + mxOff, my - 12 + m * 4, W - 120 + mxOff, my - 4);
+    c.stroke();
+  }
+
+  // Rim-lit foreground corner grass/reed silhouettes for 3-plane 2.5D depth
+  if (o.foreground !== false) {
+    for (const [baseX, dir] of [[0, 1], [W, -1]]) {
+      for (let b = 0; b < 5; b++) {
+        const bx = baseX + dir * (10 + b * 17);
+        const bh = 68 + (b % 3) * 28;
+        const sway = Math.sin(t * 1.7 + b * 1.3 + baseX) * 4;
+        c.fillStyle = '#070A10';
+        c.beginPath();
+        c.moveTo(bx - 5, H);
+        c.quadraticCurveTo(bx + sway * 0.5, H - bh * 0.6, bx + dir * 12 + sway, H - bh);
+        c.quadraticCurveTo(bx + 4 + sway * 0.4, H - bh * 0.5, bx + 5, H);
+        c.closePath(); c.fill();
+        c.strokeStyle = 'rgba(186, 230, 253, 0.28)'; c.lineWidth = 1.0;
+        c.beginPath();
+        c.moveTo(bx + (dir > 0 ? 4 : -4), H);
+        c.quadraticCurveTo(bx + sway * 0.5 + dir * 2, H - bh * 0.55, bx + dir * 12 + sway, H - bh);
+        c.stroke();
+      }
     }
   }
   return { horizonY };
@@ -809,14 +1135,109 @@ function roomCorner(c, o = {}) {
   c.fillStyle = floorCol;
   c.beginPath(); c.moveTo(0, botY + 40); c.lineTo(cx, botY); c.lineTo(W, botY + 30); c.lineTo(W, H); c.lineTo(0, H); c.closePath(); c.fill();
 
+  // Perspective wood-plank floor lines, bevel highlights & grain ticks
+  c.save();
+  c.beginPath(); c.moveTo(0, botY + 40); c.lineTo(cx, botY); c.lineTo(W, botY + 30); c.lineTo(W, H); c.lineTo(0, H); c.closePath();
+  c.clip();
+  for (let d = 1; d <= 5; d++) {
+    const dy = d * d * 12;
+    c.strokeStyle = 'rgba(5, 7, 12, 0.28)'; c.lineWidth = 1.4;
+    c.beginPath(); c.moveTo(0, botY + 40 + dy); c.lineTo(cx, botY + dy * 0.85); c.lineTo(W, botY + 30 + dy); c.stroke();
+    c.strokeStyle = 'rgba(255, 240, 220, 0.08)'; c.lineWidth = 0.9;
+    c.beginPath(); c.moveTo(0, botY + 41.5 + dy); c.lineTo(cx, botY + 1.5 + dy * 0.85); c.lineTo(W, botY + 31.5 + dy); c.stroke();
+  }
+  const lSlope = -40 / Math.max(1, cx), rSlope = 30 / Math.max(1, W - cx);
+  for (let u = 0.2; u < 1; u += 0.2) {
+    const lx = cx * u, ly = botY + (1 - u) * 40;
+    const lx2 = lx + (H - ly) / Math.abs(rSlope + 0.35);
+    c.strokeStyle = 'rgba(5, 7, 12, 0.26)'; c.lineWidth = 1.3;
+    c.beginPath(); c.moveTo(lx, ly); c.lineTo(lx2, H); c.stroke();
+    c.strokeStyle = 'rgba(255, 240, 220, 0.07)'; c.lineWidth = 0.8;
+    c.beginPath(); c.moveTo(lx + 1.5, ly); c.lineTo(lx2 + 1.5, H); c.stroke();
+    const rx = cx + (W - cx) * u, ry = botY + u * 30;
+    const rx2 = rx - (H - ry) / Math.abs(lSlope - 0.35);
+    c.strokeStyle = 'rgba(5, 7, 12, 0.26)'; c.lineWidth = 1.3;
+    c.beginPath(); c.moveTo(rx, ry); c.lineTo(rx2, H); c.stroke();
+  }
+  c.restore();
+
   // Left & Right Walls meeting at vertical corner seam (cx)
   c.fillStyle = wallL;
   c.beginPath(); c.moveTo(0, topY - 30); c.lineTo(cx, topY); c.lineTo(cx, botY); c.lineTo(0, botY + 40); c.closePath(); c.fill();
   c.fillStyle = wallR;
   c.beginPath(); c.moveTo(cx, topY); c.lineTo(W, topY - 20); c.lineTo(W, botY + 30); c.lineTo(cx, botY); c.closePath(); c.fill();
 
-  c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 3;
+  // Chair rail (ราวกั้นผนังกลาง) + Framed recessed wall wainscoting panels (กรอบบัวผนังลูกฟัก)
+  const railFrac = 0.56;
+  const lyRail = lerp(topY - 30, botY + 40, railFrac), cyRail = lerp(topY, botY, railFrac), ryRail = lerp(topY - 20, botY + 30, railFrac);
+  c.strokeStyle = 'rgba(5, 7, 12, 0.65)'; c.lineWidth = 2.4;
+  c.beginPath(); c.moveTo(0, lyRail); c.lineTo(cx, cyRail); c.lineTo(W, ryRail); c.stroke();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.18)'; c.lineWidth = 1.1;
+  c.beginPath(); c.moveTo(0, lyRail - 1.5); c.lineTo(cx, cyRail - 1.5); c.lineTo(W, ryRail - 1.5); c.stroke();
+
+  const drawWallPanel = (xA, yTopA, yBotA, xB, yTopB, yBotB) => {
+    c.strokeStyle = 'rgba(5, 7, 12, 0.45)'; c.lineWidth = 1.4;
+    c.beginPath(); c.moveTo(xA, yTopA); c.lineTo(xB, yTopB); c.lineTo(xB, yBotB); c.lineTo(xA, yBotA); c.closePath(); c.stroke();
+    c.strokeStyle = 'rgba(186, 230, 253, 0.11)'; c.lineWidth = 0.9;
+    c.beginPath(); c.moveTo(xA + 2, yBotA - 2); c.lineTo(xB - 2, yBotB - 2); c.lineTo(xB - 2, yTopB + 2); c.stroke();
+  };
+  for (const [u1, u2] of [[0.12, 0.44], [0.54, 0.86]]) {
+    drawWallPanel(cx * u1, lerp(lyRail, cyRail, u1) + 14, lerp(botY + 40, botY, u1) - 24,
+      cx * u2, lerp(lyRail, cyRail, u2) + 14, lerp(botY + 40, botY, u2) - 24);
+    drawWallPanel(lerp(cx, W, u1), lerp(cyRail, ryRail, u1) + 14, lerp(botY, botY + 30, u1) - 24,
+      lerp(cx, W, u2), lerp(cyRail, ryRail, u2) + 14, lerp(botY, botY + 30, u2) - 24);
+  }
+
+  // Perspective-aligned Baseboards (บัวพื้น) & Crown Molding Shadow (บัวเพดาน) + Dual-Line Rim Trim
+  const bb = 15, cm = 12;
+  c.fillStyle = 'rgba(10, 12, 18, 0.46)';
+  c.beginPath(); c.moveTo(0, botY + 40 - bb); c.lineTo(cx, botY - bb); c.lineTo(cx, botY); c.lineTo(0, botY + 40); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(cx, botY - bb); c.lineTo(W, botY + 30 - bb); c.lineTo(W, botY + 30); c.lineTo(cx, botY); c.closePath(); c.fill();
+  c.strokeStyle = 'rgba(5, 7, 12, 0.65)'; c.lineWidth = 2.0;
+  c.beginPath(); c.moveTo(0, botY + 40 - bb); c.lineTo(cx, botY - bb); c.lineTo(W, botY + 30 - bb); c.stroke();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.18)'; c.lineWidth = 1.1;
+  c.beginPath(); c.moveTo(0, botY + 41.2 - bb); c.lineTo(cx, botY + 1.2 - bb); c.lineTo(W, botY + 31.2 - bb); c.stroke();
+
+  c.fillStyle = 'rgba(0, 0, 0, 0.36)';
+  c.beginPath(); c.moveTo(0, topY - 30); c.lineTo(cx, topY); c.lineTo(cx, topY + cm); c.lineTo(0, topY - 30 + cm); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(cx, topY); c.lineTo(W, topY - 20); c.lineTo(W, topY - 20 + cm); c.lineTo(cx, topY + cm); c.closePath(); c.fill();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.14)'; c.lineWidth = 1.0;
+  c.beginPath(); c.moveTo(0, topY - 30 + cm); c.lineTo(cx, topY + cm); c.lineTo(W, topY - 20 + cm); c.stroke();
+
+  // Diagonal window/vent slat light shaft (แสงลอดระแนงช่องลม) + floating dust motes
+  if (o.lightShaft !== false) {
+    c.save(); c.globalCompositeOperation = 'screen';
+    for (let sIdx = 0; sIdx < 3; sIdx++) {
+      const sxTop = 70 + sIdx * 68;
+      const sxBot = 330 + sIdx * 105;
+      const sg = c.createLinearGradient(sxTop, topY, sxBot, botY + 75);
+      sg.addColorStop(0, 'rgba(205, 228, 255, 0.055)');
+      sg.addColorStop(1, 'rgba(205, 228, 255, 0)');
+      c.fillStyle = sg;
+      c.beginPath(); c.moveTo(sxTop, topY - 8); c.lineTo(sxTop + 38, topY - 4); c.lineTo(sxBot + 72, botY + 85); c.lineTo(sxBot, botY + 85); c.closePath(); c.fill();
+    }
+    for (let d = 0; d < 12; d++) {
+      const u = hash(d * 7.9), dx = lerp(95, 580, u), dy = lerp(topY + 25, botY + 45, hash(d * 13.1));
+      c.fillStyle = `rgba(226, 240, 255, ${(0.18 + hash(d * 3.7) * 0.22).toFixed(3)})`;
+      c.beginPath(); c.arc(dx, dy, 1.0 + hash(d * 5.3) * 1.1, 0, TAU); c.fill();
+    }
+    c.restore();
+  }
+
+  // Corner Ambient Occlusion Gradients along vertical seam cx + dual-line corner seam
+  const aol = c.createLinearGradient(cx - 55, 0, cx, 0);
+  aol.addColorStop(0, 'rgba(0, 0, 0, 0)'); aol.addColorStop(1, 'rgba(0, 0, 0, 0.34)');
+  c.fillStyle = aol;
+  c.beginPath(); c.moveTo(cx - 55, lerp(topY - 30, topY, 1 - 55 / cx)); c.lineTo(cx, topY); c.lineTo(cx, botY); c.lineTo(cx - 55, lerp(botY + 40, botY, 1 - 55 / cx)); c.closePath(); c.fill();
+  const aor = c.createLinearGradient(cx, 0, cx + 55, 0);
+  aor.addColorStop(0, 'rgba(0, 0, 0, 0.36)'); aor.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  c.fillStyle = aor;
+  c.beginPath(); c.moveTo(cx, topY); c.lineTo(cx + 55, lerp(topY, topY - 20, 55 / (W - cx))); c.lineTo(cx + 55, lerp(botY, botY + 30, 55 / (W - cx))); c.lineTo(cx, botY); c.closePath(); c.fill();
+
+  c.strokeStyle = 'rgba(5, 7, 12, 0.72)'; c.lineWidth = 2.6;
   c.beginPath(); c.moveTo(cx, topY); c.lineTo(cx, botY); c.stroke();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.16)'; c.lineWidth = 1.0;
+  c.beginPath(); c.moveTo(cx + 2, topY + 2); c.lineTo(cx + 2, botY - 2); c.stroke();
   return { cx, topY, botY };
 }
 
@@ -824,24 +1245,91 @@ function roomCorner(c, o = {}) {
 function topDownRoom(c, o = {}) {
   const rx = o.x || 120, ry = o.y || 90, rw = o.w || 640, rh = o.h || 520;
   c.fillStyle = o.bg || '#111827'; c.fillRect(0, 0, W, H);
+  // Subtle outer floor shadow beneath room footprint
+  c.fillStyle = 'rgba(0, 0, 0, 0.38)'; rr(c, rx + 8, ry + 10, rw + 4, rh + 4, 10); c.fill();
   c.fillStyle = o.floor || '#1E293B'; rr(c, rx, ry, rw, rh, 8); c.fill();
 
   if (o.grid !== false) {
     c.strokeStyle = 'rgba(148,163,184,0.12)'; c.lineWidth = 1;
     for (let x = rx + 40; x < rx + rw; x += 40) { c.beginPath(); c.moveTo(x, ry); c.lineTo(x, ry + rh); c.stroke(); }
     for (let y = ry + 40; y < ry + rh; y += 40) { c.beginPath(); c.moveTo(rx, y); c.lineTo(rx + rw, y); c.stroke(); }
+    // Architectural blueprint floor tile cross-ticks
+    c.strokeStyle = 'rgba(148, 163, 184, 0.22)'; c.lineWidth = 1;
+    for (let x = rx + 80; x < rx + rw - 20; x += 80) {
+      for (let y = ry + 80; y < ry + rh - 20; y += 80) {
+        c.beginPath(); c.moveTo(x - 4, y); c.lineTo(x + 4, y); c.moveTo(x, y - 4); c.lineTo(x, y + 4); c.stroke();
+      }
+    }
   }
-  c.strokeStyle = o.wallCol || '#64748B'; c.lineWidth = 8;
+  // Inner wall 3D drop-shadow along top & left edges
+  c.save(); rr(c, rx, ry, rw, rh, 8); c.clip();
+  const ts = c.createLinearGradient(0, ry, 0, ry + 22);
+  ts.addColorStop(0, 'rgba(0, 0, 0, 0.42)'); ts.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  c.fillStyle = ts; c.fillRect(rx, ry, rw, 22);
+  const ls = c.createLinearGradient(rx, 0, rx + 22, 0);
+  ls.addColorStop(0, 'rgba(0, 0, 0, 0.38)'); ls.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  c.fillStyle = ls; c.fillRect(rx, ry, 22, rh);
+  c.restore();
+
+  // Architectural double-wall casing with 45-degree blueprint wall hatching & crisp rim lines
+  c.strokeStyle = '#07090F'; c.lineWidth = 17;
   rr(c, rx, ry, rw, rh, 8); c.stroke();
+  c.strokeStyle = 'rgba(15, 23, 42, 0.78)'; c.lineWidth = 14;
+  rr(c, rx, ry, rw, rh, 8); c.stroke();
+  c.save();
+  c.beginPath();
+  c.rect(rx - 7, ry - 7, rw + 14, rh + 14);
+  c.rect(rx + 7, ry + 7, Math.max(0, rw - 14), Math.max(0, rh - 14), true);
+  c.clip('evenodd');
+  c.strokeStyle = 'rgba(226, 232, 240, 0.18)'; c.lineWidth = 1.0;
+  for (let d = -rh; d < rw + rh; d += 10) {
+    c.beginPath(); c.moveTo(rx + d, ry - 10); c.lineTo(rx + d + rh + 20, ry + rh + 10); c.stroke();
+  }
+  c.restore();
+  c.strokeStyle = o.wallCol || '#64748B'; c.lineWidth = 3.5;
+  rr(c, rx, ry, rw, rh, 8); c.stroke();
+  c.strokeStyle = 'rgba(148, 197, 255, 0.24)'; c.lineWidth = 1.2;
+  rr(c, rx + 6, ry + 6, Math.max(0, rw - 12), Math.max(0, rh - 12), 5); c.stroke();
+
+  // Doorway threshold swing-arc blueprint line
+  if (o.door !== false) {
+    const dx = rx + rw - 6, dy = ry + rh * 0.45, dw = 48;
+    c.fillStyle = o.floor || '#1E293B'; c.fillRect(dx - 4, dy - dw, 20, dw);
+    c.strokeStyle = 'rgba(148, 197, 255, 0.28)'; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(dx, dy); c.lineTo(dx - dw, dy); c.stroke();
+    c.save(); c.setLineDash([4, 4]);
+    c.beginPath(); c.arc(dx, dy, dw, Math.PI, Math.PI * 1.5); c.stroke();
+    c.restore();
+  }
+
+  c.fillStyle = '#94A3B8';
+  for (const [px, py] of [[rx, ry], [rx + rw, ry], [rx, ry + rh], [rx + rw, ry + rh]]) {
+    rr(c, px - 7, py - 7, 14, 14, 2); c.fill();
+    c.strokeStyle = '#07090F'; c.lineWidth = 1.2; c.stroke();
+  }
   return { rx, ry, rw, rh };
 }
 
 // 4. Surveillance / Security Monitor / Peephole / Visor Lens Frame
 function cctvOverlay(c, t, o = {}) {
   c.save();
-  // Scanlines
+  // Scanlines + subtle drifting CRT phosphor bar
   c.fillStyle = 'rgba(16, 185, 129, 0.04)';
   for (let y = 0; y < H; y += 4) c.fillRect(0, y, W, 1.5);
+  const scanY = ((t * 85) % (H + 90)) - 90;
+  const sg = c.createLinearGradient(0, scanY, 0, scanY + 90);
+  sg.addColorStop(0, 'rgba(148, 226, 200, 0)');
+  sg.addColorStop(0.5, 'rgba(148, 226, 200, 0.055)');
+  sg.addColorStop(1, 'rgba(148, 226, 200, 0)');
+  c.fillStyle = sg; c.fillRect(0, scanY, W, 90);
+  // Subtle center optical reticle tick marks
+  c.strokeStyle = 'rgba(226, 232, 240, 0.24)'; c.lineWidth = 1.5;
+  c.beginPath();
+  c.moveTo(W / 2 - 14, H / 2); c.lineTo(W / 2 - 5, H / 2);
+  c.moveTo(W / 2 + 5, H / 2); c.lineTo(W / 2 + 14, H / 2);
+  c.moveTo(W / 2, H / 2 - 14); c.lineTo(W / 2, H / 2 - 5);
+  c.moveTo(W / 2, H / 2 + 5); c.lineTo(W / 2, H / 2 + 14);
+  c.stroke();
   // Corner viewfinder brackets
   c.strokeStyle = o.col || 'rgba(226,232,240,0.55)'; c.lineWidth = 2.5;
   const m = 38, L = 28;
@@ -850,7 +1338,10 @@ function cctvOverlay(c, t, o = {}) {
   }
   if (o.camLabel) {
     if (Math.floor(t * 2) % 2 === 0) { c.fillStyle = '#EF4444'; c.beginPath(); c.arc(64, 62, 6, 0, TAU); c.fill(); }
-    txt(c, o.camLabel, 80, 68, 16, '#E2E8F0', 700);
+    const pad2 = n => String(Math.floor(Math.max(0, n))).padStart(2, '0');
+    const sec = Math.max(0, t || 0);
+    const tc = `TC 01:${pad2(sec / 60)}:${pad2(sec % 60)}:${pad2((sec * 30) % 30)}`;
+    txt(c, `${o.camLabel}  ·  ${tc}`, 80, 68, 16, '#E2E8F0', 700);
   }
   c.restore();
 }
