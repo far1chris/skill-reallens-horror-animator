@@ -377,7 +377,8 @@ function drawPerson(c, x, y, s, o = {}) {
     c.strokeStyle = '#3F2E21'; c.lineWidth = 2;
     c.beginPath(); c.ellipse(o.back ? 0 : -18, -17, 7, 10, -0.25, 0, TAU); c.stroke();
   }
-  // Ears with inner-ear shadow crescent (peek symmetrically around capsule jaw)
+  // Ears with inner-ear shadow crescent (hide forward ear during 3/4 side-gaze or profile)
+  const isSideGaze = Boolean(o.profile || o.flashlight || o.torch || o.gazeForward);
   if (o.back) {
     for (const ex of [-25.5, 25.5]) {
       c.fillStyle = K.skinSh; c.beginPath(); c.ellipse(ex, -1, 4.5, 8.5, 0, 0, TAU); c.fill();
@@ -387,7 +388,7 @@ function drawPerson(c, x, y, s, o = {}) {
     c.strokeStyle = 'rgba(10, 12, 18, 0.35)'; c.lineWidth = 1.4; c.stroke();
     c.strokeStyle = 'rgba(70, 30, 20, 0.38)'; c.lineWidth = 1.3;
     c.beginPath(); c.arc(-25.2, -1, 4.2, -1.1, 1.2); c.stroke();
-    if (!o.profile) {
+    if (!isSideGaze) {
       c.fillStyle = K.skin; c.beginPath(); c.ellipse(25.2, -1, 4.0, 8.0, 0.08, 0, TAU); c.fill();
       c.strokeStyle = 'rgba(10, 12, 18, 0.32)'; c.lineWidth = 1.3; c.stroke();
     }
@@ -449,44 +450,51 @@ function drawPerson(c, x, y, s, o = {}) {
     c.strokeStyle = 'rgba(255, 255, 255, 0.11)'; c.lineWidth = 2.0; c.lineCap = 'round';
     c.beginPath(); c.arc(-1, -12, 22, -2.35, -0.82); c.stroke();
 
-    const fx = o.profile ? 8 : 3, ex = o.expr || 'neutral';
+    const fx = o.profile ? 8.2 : (isSideGaze ? 7.2 : 3), ex = o.expr || 'neutral';
     const eyeR = ex === 'shock' ? 4.2 : 3.4;
     // Tiny clean minimalist nose-tip accent (no long vertical bridge line)
     c.fillStyle = 'rgba(70, 30, 20, 0.22)';
-    c.beginPath(); c.ellipse(fx + 1, 5.5, 2.2, 1.1, 0, 0, TAU); c.fill();
+    c.beginPath(); c.ellipse(fx + (isSideGaze ? 2.2 : 1), 5.5, 2.2, 1.1, 0, 0, TAU); c.fill();
 
+    const eyeXs = isSideGaze ? [-8.5, 9.5] : [-10, 10];
     // Single subtle under-eye crescent
     const darkEye = o.thin || ex === 'tired' || ex === 'fear' || ex === 'shock';
-    for (const sx of [-10, 10]) {
+    for (const sx of eyeXs) {
       c.strokeStyle = darkEye ? 'rgba(70,30,20,0.34)' : 'rgba(70,30,20,0.16)'; c.lineWidth = 1.5;
       c.beginPath(); c.arc(sx + fx, 2, 5.0, 0.22 * Math.PI, 0.78 * Math.PI); c.stroke();
     }
-    // Signature dark eyes with soft upper-eyelid crease + dual catchlights
+    // Signature dark eyes with trailing sclera sliver on 3/4 side-gaze + dual catchlights
     const blink = o.t != null && (o.t % 3.7) < 0.12;
-    for (const sx of [-10, 10]) {
+    for (let ei = 0; ei < eyeXs.length; ei++) {
+      const sx = eyeXs[ei];
       if (blink || ex === 'squint') {
         c.fillStyle = '#141414'; c.fillRect(sx + fx - 3.6, -4, 7.2, 2); continue;
       }
       c.strokeStyle = 'rgba(45, 20, 14, 0.22)'; c.lineWidth = 0.9;
       c.beginPath(); c.arc(sx + fx, -3.2, eyeR + 1.8, -0.80 * Math.PI, -0.20 * Math.PI); c.stroke();
+      const erx = (isSideGaze && ei === 1) ? eyeR * 0.86 : eyeR;
+      if (isSideGaze) {
+        c.fillStyle = 'rgba(235, 240, 248, 0.84)';
+        c.beginPath(); c.ellipse(sx + fx - 0.9, -3, erx + 1.15, eyeR + 0.35, 0, 0, TAU); c.fill();
+      }
       c.fillStyle = '#141414';
-      c.beginPath(); c.arc(sx + fx, -3, eyeR, 0, TAU); c.fill();
-      // Primary top-right glint
+      c.beginPath(); c.ellipse(sx + fx + (isSideGaze ? 0.85 : 0), -3, erx, eyeR, 0, 0, TAU); c.fill();
+      // Primary forward glint
       c.fillStyle = 'rgba(255, 255, 255, 0.95)';
-      c.beginPath(); c.arc(sx + fx + 1.2, -4.3, 1.15, 0, TAU); c.fill();
+      c.beginPath(); c.arc(sx + fx + (isSideGaze ? 1.85 : 1.25), -4.2, isSideGaze ? 0.95 : 1.15, 0, TAU); c.fill();
       // Micro bottom-left secondary catchlight
       c.fillStyle = 'rgba(220, 238, 255, 0.72)';
-      c.beginPath(); c.arc(sx + fx - 1.1, -1.7, 0.65, 0, TAU); c.fill();
+      c.beginPath(); c.arc(sx + fx + (isSideGaze ? -0.35 : -1.0), -1.7, 0.6, 0, TAU); c.fill();
     }
     c.strokeStyle = '#141414'; c.lineWidth = isFem ? 2.1 : 2.6; c.lineCap = 'round';
     const bi = ex === 'fear' || ex === 'shock' ? -3 : ex === 'focus' ? 3 : 0;
-    c.beginPath(); c.moveTo(-15 + fx, -12); c.lineTo(-6 + fx, -12 + bi); c.stroke();
-    c.beginPath(); c.moveTo(15 + fx, -12); c.lineTo(6 + fx, -12 + bi); c.stroke();
+    c.beginPath(); c.moveTo(eyeXs[0] - 5 + fx, -12); c.lineTo(eyeXs[0] + 4 + fx, -12 + bi); c.stroke();
+    c.beginPath(); c.moveTo(eyeXs[1] + (isSideGaze ? 3.5 : 5) + fx, -12); c.lineTo(eyeXs[1] - 4 + fx, -12 + bi); c.stroke();
     c.lineWidth = 2.2;
     if (ex === 'shock' || ex === 'fear') { c.fillStyle = '#3a1210'; c.beginPath(); c.ellipse(fx, 15, 4, ex === 'shock' ? 5.5 : 3, 0, 0, TAU); c.fill(); }
     else if (ex === 'relief') { c.beginPath(); c.arc(fx, 10, 6, 0.2 * Math.PI, 0.8 * Math.PI); c.stroke(); }
     else { c.beginPath(); c.moveTo(fx - 5, 15); c.lineTo(fx + 5, 15); c.stroke(); }
-    if (o.sweat) { c.fillStyle = '#BFE3FF'; c.beginPath(); c.ellipse(24, -6 + ((o.t || 0) * 20 % 18), 2.5, 4, 0, 0, TAU); c.fill(); }
+    if (o.sweat) { c.fillStyle = '#BFE3FF'; c.beginPath(); c.ellipse(isSideGaze ? -18.5 : 24, -6 + ((o.t || 0) * 20 % 18), 2.5, 4, 0, 0, TAU); c.fill(); }
     // Theme B: Cold breath vapor
     if (o.coldBreath) {
       const bt = ((o.t || 0) % 2.4) / 2.4;
@@ -1343,6 +1351,304 @@ function cctvOverlay(c, t, o = {}) {
     const tc = `TC 01:${pad2(sec / 60)}:${pad2(sec % 60)}:${pad2((sec * 30) % 30)}`;
     txt(c, `${o.camLabel}  ·  ${tc}`, 80, 68, 16, '#E2E8F0', 700);
   }
+  c.restore();
+}
+
+// --------------------------------------------------------- RURAL THAI STAGE BUILDERS
+function drawSugarPalm(c, x, y, s = 1, sway = 0) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  c.strokeStyle = '#090D16'; c.lineWidth = 8; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(-8 + sway * 0.4, -75, sway, -155); c.stroke();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.22)'; c.lineWidth = 1.4;
+  c.beginPath(); c.moveTo(-3.5, 0); c.quadraticCurveTo(-11.5 + sway * 0.4, -75, -3 + sway, -155); c.stroke();
+  c.translate(sway, -156);
+  for (const ang of [-2.55, -2.0, -1.55, -1.05, -0.55, 0.05, 0.65]) {
+    c.save(); c.rotate(ang);
+    c.fillStyle = '#080C14';
+    c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(18, -11, 34, -2); c.quadraticCurveTo(18, 6, 0, 2); c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(186, 230, 253, 0.18)'; c.lineWidth = 1.0;
+    c.beginPath(); c.moveTo(4, -2); c.quadraticCurveTo(18, -9, 32, -2); c.stroke();
+    c.restore();
+  }
+  c.restore();
+}
+
+function drawRiceClump(c, x, y, s = 1, t = 0, seed = 0, litWarm = 0) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  c.strokeStyle = 'rgba(125, 211, 252, 0.12)'; c.lineWidth = 1.0;
+  c.beginPath(); c.ellipse(0, 1, 10, 2.2, 0, 0, TAU); c.stroke();
+  const blades = [[-9, 23, -17], [-4, 29, -8], [0, 32, 1], [4, 28, 10], [8, 22, 18]];
+  for (let i = 0; i < blades.length; i++) {
+    const [bx, bh, bend] = blades[i];
+    const sw = Math.sin(t * 1.9 + seed + i * 0.7) * 2.6;
+    c.strokeStyle = '#090E14'; c.lineWidth = 2.2; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(bx * 0.35, 0); c.quadraticCurveTo(bx * 0.5 + sw * 0.4, -bh * 0.6, bend + sw, -bh); c.stroke();
+    c.strokeStyle = litWarm > 0.25
+      ? `rgba(251, 191, 36, ${(0.28 * litWarm).toFixed(3)})`
+      : 'rgba(186, 230, 253, 0.20)';
+    c.lineWidth = 0.9;
+    c.beginPath(); c.moveTo(bx * 0.35 - 0.8, -3); c.quadraticCurveTo(bx * 0.5 + sw * 0.4 - 0.8, -bh * 0.6, bend + sw - 0.4, -bh); c.stroke();
+  }
+  c.restore();
+}
+
+function drawDikeGrass(c, x, y, s = 1, seed = 0, warm = 0) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  for (let i = -2; i <= 2; i++) {
+    const h = 11 + hash(seed + i * 3.7) * 11;
+    const lean = i * 5.2 + (hash(seed + i * 9.1) - 0.5) * 4;
+    c.strokeStyle = '#0B1012'; c.lineWidth = 2.0; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(i * 2.2, 2); c.quadraticCurveTo(i * 2.5 + lean * 0.4, -h * 0.5, lean, -h); c.stroke();
+    c.strokeStyle = warm > 0.2 ? `rgba(251, 191, 36, ${(0.24 * warm).toFixed(2)})` : 'rgba(186, 230, 253, 0.18)';
+    c.lineWidth = 0.85;
+    c.beginPath(); c.moveTo(i * 2.2 - 0.6, -2); c.quadraticCurveTo(i * 2.5 + lean * 0.4 - 0.6, -h * 0.55, lean, -h); c.stroke();
+  }
+  c.restore();
+}
+
+function drawBananaCluster(c, x, y, s = 1, t = 0) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  c.fillStyle = 'rgba(0,0,0,0.40)'; c.beginPath(); c.ellipse(2, 2, 26, 6, 0, 0, TAU); c.fill();
+  c.fillStyle = '#18241C';
+  c.beginPath(); c.moveTo(-16, 0); c.lineTo(-14, -108); c.lineTo(-6, -108); c.lineTo(-4, 0); c.closePath(); c.fill();
+  c.strokeStyle = '#06080B'; c.lineWidth = 1.8; c.stroke();
+  c.fillStyle = '#1B2A20';
+  c.beginPath(); c.moveTo(-7, 0); c.lineTo(-5, -148); c.lineTo(7, -148); c.lineTo(9, 0); c.closePath(); c.fill();
+  c.strokeStyle = '#06080B'; c.lineWidth = 2.0; c.stroke();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.22)'; c.lineWidth = 1.1;
+  c.beginPath(); c.moveTo(-5.5, -4); c.lineTo(-4, -146); c.stroke();
+
+  const drawTornLeaf = (ox, oy, ang, len, wid, flip = 1) => {
+    const sw = Math.sin(t * 1.4 + ang * 3.5) * 3.5;
+    c.save(); c.translate(ox, oy); c.rotate(ang); c.scale(1, flip);
+    c.fillStyle = '#16271D';
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.quadraticCurveTo(len * 0.35, -wid * 0.95 + sw, len * 0.62, -wid * 0.65 + sw);
+    c.lineTo(len * 0.64, -wid * 0.12 + sw * 0.8);
+    c.lineTo(len * 0.69, -wid * 0.55 + sw);
+    c.quadraticCurveTo(len * 0.88, -wid * 0.28 + sw, len, 10 + sw * 1.2);
+    c.quadraticCurveTo(len * 0.62, wid * 0.45 + sw * 0.5, len * 0.46, wid * 0.22 + sw * 0.4);
+    c.lineTo(len * 0.43, wid * 0.05 + sw * 0.3);
+    c.lineTo(len * 0.39, wid * 0.28 + sw * 0.3);
+    c.quadraticCurveTo(len * 0.16, wid * 0.22, 0, 2);
+    c.closePath(); c.fill();
+    c.strokeStyle = '#06080B'; c.lineWidth = 1.9; c.lineJoin = 'round'; c.stroke();
+    c.strokeStyle = 'rgba(186, 230, 253, 0.26)'; c.lineWidth = 1.15;
+    c.beginPath(); c.moveTo(2, 0); c.quadraticCurveTo(len * 0.55, -wid * 0.22 + sw * 0.7, len, 10 + sw * 1.2); c.stroke();
+    c.restore();
+  };
+
+  drawTornLeaf(-10, -104, -2.55, 76, 21, -1);
+  drawTornLeaf(0, -142, -2.72, 94, 24, -1);
+  drawTornLeaf(1, -145, -2.18, 92, 23, -1);
+  drawTornLeaf(2, -146, -1.62, 74, 20, 1);
+  drawTornLeaf(4, -142, -0.52, 82, 22, 1);
+  drawTornLeaf(4, -135, 0.18, 78, 21, 1);
+  c.restore();
+}
+
+function drawStiltHouse(c, t = 0, o = {}) {
+  c.save();
+  if (o.x || o.y) c.translate(o.x || 0, o.y || 0);
+  if (o.s != null && o.s !== 1) c.scale(o.s, o.s);
+
+  const floorY = 350, groundY = 512, peakX = 762, peakY = 132;
+  const winOn = o.windowLight !== false;
+
+  if (o.mound !== false) {
+    c.fillStyle = '#181411';
+    c.beginPath(); c.moveTo(575, 520); c.quadraticCurveTo(640, 492, 860, 494); c.quadraticCurveTo(1060, 496, 1140, 522);
+    c.lineTo(1165, 540); c.lineTo(540, 536); c.closePath(); c.fill();
+    c.strokeStyle = '#07090F'; c.lineWidth = 2.0; c.stroke();
+    c.strokeStyle = 'rgba(251, 191, 36, 0.18)'; c.lineWidth = 1.2;
+    c.beginPath(); c.moveTo(600, 506); c.quadraticCurveTo(750, 493, 1020, 498); c.stroke();
+  }
+
+  const drawStilt = (sx, syTop, syBot, w, rimWarm = 0.25) => {
+    c.save();
+    c.fillStyle = 'rgba(0,0,0,0.45)'; c.beginPath(); c.ellipse(sx + w / 2, syBot, w * 1.2, 5, 0, 0, TAU); c.fill();
+    c.fillStyle = cyl(c, sx, w, '#2D1E15', '#422D20', '#18100B');
+    c.fillRect(sx, syTop, w, syBot - syTop);
+    c.strokeStyle = '#07090F'; c.lineWidth = 2.0;
+    c.strokeRect(sx, syTop, w, syBot - syTop);
+    c.strokeStyle = 'rgba(7, 9, 15, 0.55)'; c.lineWidth = 1.1;
+    c.beginPath(); c.moveTo(sx + w * 0.45, syTop + 18); c.lineTo(sx + w * 0.45, syBot - 16); c.stroke();
+    c.strokeStyle = `rgba(251, 191, 36, ${rimWarm})`; c.lineWidth = 1.3;
+    c.beginPath(); c.moveTo(sx + 1.5, syTop + 4); c.lineTo(sx + 1.5, syBot - 4); c.stroke();
+    c.restore();
+  };
+
+  if (o.haystack !== false) {
+    c.save(); c.translate(1055, 502);
+    c.fillStyle = 'rgba(0,0,0,0.42)'; c.beginPath(); c.ellipse(0, 2, 56, 9, 0, 0, TAU); c.fill();
+    c.fillStyle = '#33281A';
+    c.beginPath(); c.moveTo(-48, 0); c.quadraticCurveTo(-40, -62, 0, -76); c.quadraticCurveTo(40, -62, 48, 0); c.closePath(); c.fill();
+    c.strokeStyle = '#07090F'; c.lineWidth = 2.2; c.stroke();
+    c.strokeStyle = 'rgba(186, 230, 253, 0.22)'; c.lineWidth = 1.2;
+    c.beginPath(); c.moveTo(-42, -14); c.quadraticCurveTo(-30, -62, 0, -75); c.stroke();
+    c.strokeStyle = 'rgba(217, 179, 108, 0.25)'; c.lineWidth = 1.2;
+    for (let k = -3; k <= 3; k++) { c.beginPath(); c.moveTo(k * 9, -62 + Math.abs(k) * 5); c.lineTo(k * 12, -10); c.stroke(); }
+    c.restore();
+  }
+
+  drawStilt(972, floorY, 496, 14, 0.12);
+
+  if (o.bambooBed !== false) {
+    c.save();
+    c.fillStyle = 'rgba(0,0,0,0.52)'; c.beginPath(); c.ellipse(892, 502, 72, 8, 0, 0, TAU); c.fill();
+    for (const bx of [838, 940]) {
+      c.fillStyle = '#241810'; c.fillRect(bx, 462, 7, 38);
+      c.strokeStyle = '#07090F'; c.lineWidth = 1.6; c.strokeRect(bx, 462, 7, 38);
+    }
+    c.fillStyle = '#362519'; rr(c, 825, 454, 134, 11, 3); c.fill();
+    c.strokeStyle = '#07090F'; c.lineWidth = 1.8; c.stroke();
+    c.strokeStyle = 'rgba(251, 191, 36, 0.16)'; c.lineWidth = 1.1;
+    c.beginPath(); c.moveTo(827, 455.5); c.lineTo(957, 455.5); c.stroke();
+    c.restore();
+  }
+
+  if (typeof o.underStiltFn === 'function') {
+    o.underStiltFn(c, t, { floorY, groundY, bedY: 454, seatAnchorX: 896, seatAnchorY: 500 });
+  } else if (o.entity) {
+    drawEntity(c, 896, 500, 0.68, Object.assign({
+      t, dark: true, tall: 1.0, dir: -1, prop: 'none', cap: false,
+      suit: '#161C26', suitHi: '#222B3B', suitSh: '#0E131B',
+      skin: '#202836',
+      headColor: '#283242', headHi: '#38465C', headSh: '#151B24',
+      reveal: 0.96, bloodSlits: true, eyeColor: '#FEF3C7',
+      pose: poseSit(t), tilt: 0.16
+    }, typeof o.entity === 'object' ? o.entity : {}));
+  }
+
+  drawStilt(820, floorY, 496, 16, 0.18);
+
+  if (winOn) {
+    c.save(); c.globalCompositeOperation = 'screen';
+    for (const [gx, gw] of [[785, 16], [855, 20], [912, 14]]) {
+      const lg = c.createLinearGradient(gx, floorY, gx - 24, groundY);
+      lg.addColorStop(0, 'rgba(245, 158, 11, 0.12)');
+      lg.addColorStop(1, 'rgba(245, 158, 11, 0)');
+      c.fillStyle = lg;
+      c.beginPath(); c.moveTo(gx, floorY); c.lineTo(gx + gw, floorY); c.lineTo(gx + gw - 34, groundY); c.lineTo(gx - 34, groundY); c.closePath(); c.fill();
+    }
+    c.restore();
+  }
+
+  drawStilt(692, floorY, groundY, 19, 0.34);
+  drawStilt(956, floorY, groundY, 19, 0.20);
+
+  if (o.banana !== false) drawBananaCluster(c, 626, 510, 1.08, t);
+  if (o.jars !== false) {
+    for (const [jx, jy, js] of [[656, 510, 0.92], [682, 514, 0.72]]) {
+      c.save(); c.translate(jx, jy); c.scale(js, js);
+      c.fillStyle = 'rgba(0,0,0,0.42)'; c.beginPath(); c.ellipse(0, 0, 22, 5, 0, 0, TAU); c.fill();
+      c.fillStyle = '#2B201C'; c.beginPath(); c.ellipse(0, -16, 19, 22, 0, 0, TAU); c.fill();
+      c.strokeStyle = '#07090F'; c.lineWidth = 2.0; c.stroke();
+      c.fillStyle = '#3B2C26'; rr(c, -11, -40, 22, 6, 2); c.fill(); c.stroke();
+      c.strokeStyle = 'rgba(186, 230, 253, 0.25)'; c.lineWidth = 1.2;
+      c.beginPath(); c.arc(0, -16, 17, -2.5, -1.2); c.stroke();
+      c.restore();
+    }
+  }
+
+  if (o.ladder !== false) {
+    c.save();
+    c.strokeStyle = '#07090F'; c.lineWidth = 7.5; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(732, 510); c.lineTo(766, floorY - 4); c.moveTo(754, 510); c.lineTo(786, floorY - 4); c.stroke();
+    c.strokeStyle = '#4A3425'; c.lineWidth = 4.5;
+    c.beginPath(); c.moveTo(732, 510); c.lineTo(766, floorY - 4); c.moveTo(754, 510); c.lineTo(786, floorY - 4); c.stroke();
+    c.strokeStyle = 'rgba(251, 191, 36, 0.28)'; c.lineWidth = 1.1;
+    c.beginPath(); c.moveTo(730.5, 510); c.lineTo(764.5, floorY - 4); c.stroke();
+    for (let r = 1; r <= 7; r++) {
+      const k = r / 8, rx1 = lerp(732, 766, k), rx2 = lerp(754, 786, k), ry = lerp(510, floorY - 4, k);
+      c.strokeStyle = '#07090F'; c.lineWidth = 5.5; c.beginPath(); c.moveTo(rx1, ry); c.lineTo(rx2, ry); c.stroke();
+      c.strokeStyle = '#5C4230'; c.lineWidth = 3.0; c.beginPath(); c.moveTo(rx1, ry); c.lineTo(rx2, ry); c.stroke();
+    }
+    c.restore();
+  }
+
+  c.fillStyle = '#241811'; c.fillRect(838, 234, 148, 114);
+  for (let py = 240; py < 346; py += 14) {
+    c.strokeStyle = '#07090F'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(838, py); c.lineTo(986, py); c.stroke();
+    c.strokeStyle = 'rgba(251, 191, 36, 0.08)'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(838, py + 1.5); c.lineTo(986, py + 1.5); c.stroke();
+  }
+  c.strokeStyle = '#07090F'; c.lineWidth = 2.4; c.strokeRect(838, 234, 148, 114);
+
+  c.fillStyle = '#2E1F16';
+  c.beginPath(); c.moveTo(682, 348); c.lineTo(682, 234); c.lineTo(peakX, peakY); c.lineTo(842, 234); c.lineTo(842, 348); c.closePath(); c.fill();
+  for (let py = 150; py < 346; py += 14) {
+    const lx = py < 234 ? lerp(peakX, 682, (py - peakY) / (234 - peakY)) : 682;
+    const rx = py < 234 ? lerp(peakX, 842, (py - peakY) / (234 - peakY)) : 842;
+    c.strokeStyle = '#07090F'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(lx, py); c.lineTo(rx, py); c.stroke();
+    c.strokeStyle = 'rgba(186, 230, 253, 0.08)'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(lx + 2, py + 1.4); c.lineTo(rx - 2, py + 1.4); c.stroke();
+  }
+  c.strokeStyle = '#07090F'; c.lineWidth = 2.4;
+  c.beginPath(); c.moveTo(682, 348); c.lineTo(682, 234); c.lineTo(peakX, peakY); c.lineTo(842, 234); c.lineTo(842, 348); c.stroke();
+
+  if (winOn) {
+    glow(c, 900, 283, 130, '#F59E0B', 0.34);
+    c.fillStyle = '#F59E0B'; rr(c, 876, 260, 48, 46, 2); c.fill();
+    const wg = c.createRadialGradient(900, 289, 4, 900, 283, 32);
+    wg.addColorStop(0, '#FEF3C7'); wg.addColorStop(1, '#D97706');
+    c.fillStyle = wg; c.fillRect(878, 262, 44, 42);
+  } else {
+    c.fillStyle = '#12161E'; c.fillRect(876, 260, 48, 46);
+  }
+  c.strokeStyle = '#07090F'; c.lineWidth = 2.6; c.strokeRect(876, 260, 48, 46);
+  c.lineWidth = 2.0;
+  for (const bx of [891, 909]) { c.beginPath(); c.moveTo(bx, 260); c.lineTo(bx, 306); c.stroke(); }
+  c.fillStyle = '#2B1B12';
+  c.beginPath(); c.moveTo(875, 260); c.lineTo(925, 260); c.lineTo(938, 244); c.lineTo(886, 244); c.closePath(); c.fill();
+  c.strokeStyle = '#07090F'; c.lineWidth = 2.0; c.stroke();
+
+  if (winOn) {
+    c.save(); c.globalCompositeOperation = 'screen';
+    const wBeam = c.createLinearGradient(900, 283, 825, 505);
+    wBeam.addColorStop(0, 'rgba(245, 158, 11, 0.22)');
+    wBeam.addColorStop(1, 'rgba(245, 158, 11, 0)');
+    c.fillStyle = wBeam;
+    c.beginPath(); c.moveTo(878, 306); c.lineTo(922, 306); c.lineTo(878, 505); c.lineTo(790, 505); c.closePath(); c.fill();
+    c.restore();
+  }
+
+  c.fillStyle = '#1D130D'; c.fillRect(742, 262, 40, 42);
+  c.strokeStyle = '#07090F'; c.lineWidth = 2.2; c.strokeRect(742, 262, 40, 42);
+  c.beginPath(); c.moveTo(762, 262); c.lineTo(762, 304); c.stroke();
+
+  if (o.lantern !== false) {
+    glow(c, 704, 284, 72, '#F59E0B', 0.28);
+    c.strokeStyle = '#07090F'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(704, 250); c.lineTo(704, 272); c.stroke();
+    c.fillStyle = '#FEF3C7'; rr(c, 699, 274, 10, 14, 3); c.fill();
+    c.strokeStyle = '#07090F'; c.lineWidth = 1.8; c.stroke();
+  }
+
+  c.fillStyle = '#382519'; rr(c, 672, 344, 318, 13, 3); c.fill();
+  c.strokeStyle = '#07090F'; c.lineWidth = 2.2; c.stroke();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.22)'; c.lineWidth = 1.2;
+  c.beginPath(); c.moveTo(674, 345.5); c.lineTo(988, 345.5); c.stroke();
+
+  c.strokeStyle = '#07090F'; c.lineWidth = 2.2; c.fillStyle = '#4A3222';
+  c.fillRect(678, 318, 162, 5); c.strokeRect(678, 318, 162, 5);
+  for (let px = 684; px <= 834; px += 18) { c.fillRect(px, 320, 4, 24); c.strokeRect(px, 320, 4, 24); }
+
+  c.fillStyle = '#1E2530';
+  c.beginPath(); c.moveTo(peakX, peakY - 4); c.lineTo(975, peakY + 6); c.lineTo(1018, 246); c.lineTo(848, 242); c.closePath(); c.fill();
+  for (let k = 0.08; k < 1; k += 0.08) {
+    const rx1 = lerp(peakX, 975, k), ry1 = lerp(peakY - 4, peakY + 6, k);
+    const rx2 = lerp(848, 1018, k), ry2 = lerp(242, 246, k);
+    c.strokeStyle = 'rgba(7, 9, 15, 0.52)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(rx1, ry1); c.lineTo(rx2, ry2); c.stroke();
+    c.strokeStyle = 'rgba(186, 230, 253, 0.14)'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(rx1 + 1.5, ry1); c.lineTo(rx2 + 1.5, ry2); c.stroke();
+  }
+  c.strokeStyle = '#07090F'; c.lineWidth = 2.6;
+  c.beginPath(); c.moveTo(peakX, peakY - 4); c.lineTo(975, peakY + 6); c.lineTo(1018, 246); c.lineTo(848, 242); c.closePath(); c.stroke();
+
+  c.strokeStyle = '#07090F'; c.lineWidth = 8.5; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(656, 246); c.lineTo(peakX, peakY - 4); c.lineTo(852, 246); c.stroke();
+  c.strokeStyle = '#4B3324'; c.lineWidth = 4.5;
+  c.beginPath(); c.moveTo(656, 246); c.lineTo(peakX, peakY - 4); c.lineTo(852, 246); c.stroke();
+  c.strokeStyle = 'rgba(186, 230, 253, 0.38)'; c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(656, 242); c.lineTo(peakX, peakY - 7); c.lineTo(976, peakY + 3); c.stroke();
   c.restore();
 }
 
