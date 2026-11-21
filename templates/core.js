@@ -4,15 +4,21 @@
 //  Human Proportion Ratio 1:6.5 (Athletic build with continuous trapezius slope)
 //  Includes:
 //   - Math, color, blurLayer (DoF/rack-focus), deterministic flick()
-//   - 2-Segment FK Poses (poseWalk, poseStand, poseKneel, poseSit, poseClimb)
+//   - 2-Segment FK Poses (poseWalk, poseStand, poseKneel, poseSit, poseSquat, poseClimb)
 //   - drawPerson() (1:6.5 rig, Theme B coldBreath/shiver, Theme C coverMouth)
 //   - drawEntity() + drawJanitor() (Correct Z-Index: suitSh -> Prop -> suitHi)
 //   - hand() 400px Macro POV Forearm (watch/marker/tape/flashlight/knife/radio)
 //   - corridor() 3D 1-point perspective engine + frostOverlay() + vignette/grain
-//   - Theme-agnostic HUD suite: drawCard (auto-fit), drawFlow, drawTele,
-//     drawChapter, normalizeCard, and frameless 9:16-aware drawSub
+//   - Clean Storytelling Output: drawSub() frameless 9:16-aware subtitles ONLY
+//     (red pill drawChapter removed; drawTele/drawCard/drawFlow off by default)
 // =============================================================================
 const W = 1280, H = 720, TAU = Math.PI * 2;
+const SHORTS_W = 1080, SHORTS_H = 1920;
+const SHORTS_SX = 1.50, SHORTS_SY = SHORTS_H / H; // 1.50x horizontal (720px visible width), 2.6667x vertical (full 0..1920 height)
+const SHORTS_CHAR_SCALE = 1.85;
+let _inShortsWorld = false;
+let _inShortsRig = false;
+
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = k => (k = clamp(k), k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
@@ -22,6 +28,36 @@ const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s
 const prog = (t, a, b) => clamp((t - a) / (b - a));
 const FONT = "'Kanit','Leelawadee UI','Tahoma',sans-serif";
 const F_MONO = "'JetBrains Mono','Kanit',monospace";
+
+function isShortsMode() {
+  return typeof window !== 'undefined' && Boolean(window.SHORTS_MODE);
+}
+function beginShortsWorld(c, s) {
+  if (!isShortsMode()) return false;
+  const rawFx = s && typeof s.focusX === 'number' ? s.focusX : W / 2;
+  const halfVisW = (SHORTS_W / SHORTS_SX) / 2; // 360px
+  const fx = clamp(rawFx, halfVisW, W - halfVisW);
+  c.save();
+  c.translate(SHORTS_W / 2, 0);
+  c.scale(SHORTS_SX, SHORTS_SY);
+  c.translate(-fx, 0);
+  _inShortsWorld = true;
+  return true;
+}
+function endShortsWorld(c, active) {
+  if (!active) return;
+  _inShortsWorld = false;
+  c.restore();
+}
+function applyShortsRigComp(c) {
+  if (!_inShortsWorld || _inShortsRig) return false;
+  c.scale(SHORTS_CHAR_SCALE / SHORTS_SX, SHORTS_CHAR_SCALE / SHORTS_SY);
+  _inShortsRig = true;
+  return true;
+}
+function endShortsRigComp(applied) {
+  if (applied) _inShortsRig = false;
+}
 
 function hex2rgb(h) { h = h.replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
 function mix(a, b, k) { const A = hex2rgb(a), B = hex2rgb(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], clamp(k)))).join(',')})`; }
@@ -54,13 +90,66 @@ if (_tmp) { _tmp.width = W; _tmp.height = H; }
 const _tc = _tmp ? _tmp.getContext('2d') : null;
 function blurLayer(c, px, fn, extra = '') {
   if (!_tc) { fn(c); return; }
+  const wasShortsWorld = _inShortsWorld;
+  _inShortsWorld = false;
   _tc.setTransform(1, 0, 0, 1, 0, 0); _tc.clearRect(0, 0, W, H); fn(_tc);
-  c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.filter = `blur(${px}px) ${extra}`; c.drawImage(_tmp, 0, 0); c.restore();
+  _inShortsWorld = wasShortsWorld;
+  c.save();
+  if (!wasShortsWorld) c.setTransform(1, 0, 0, 1, 0, 0);
+  c.filter = `blur(${px}px) ${extra}`; c.drawImage(_tmp, 0, 0); c.restore();
 }
 function flick(i, t, rate = 1) {
   const a = hash(i * 13.1 + Math.floor(t * 14 * rate));
   const bad = hash(i * 7.7) > 0.78;
   return bad ? (a > 0.55 ? 1 : a > 0.3 ? 0.35 : 0.08) : (a > 0.985 ? 0.4 : 1);
+}
+
+// Dynamic Camera Motion Rig: slow push-in, punch snap-zoom, handheld drift, impact shake
+function cameraRig(c, lt, dur, o = {}, drawFn = null) {
+  const safeDur = Math.max(0.5, Number(dur) || 5);
+  const k = clamp(lt / safeDur);
+  const fx = o.focusX !== undefined ? o.focusX : W / 2;
+  const fy = o.focusY !== undefined ? o.focusY : H / 2;
+  const zFrom = o.zoomFrom !== undefined ? o.zoomFrom : (o.handheld !== false ? 1.015 : 1.0);
+  const zTo = o.zoomTo !== undefined ? o.zoomTo : (o.push === false ? zFrom : 1.08);
+  let scale = lerp(zFrom, zTo, ease(k));
+  if (o.snapAt !== undefined) {
+    const snapK = easeOut(prog(lt, o.snapAt, o.snapAt + (o.snapDur || 0.14)));
+    scale *= 1 + ((o.snapScale || 1.14) - 1) * snapK;
+  }
+  let tx = (o.panX || 0) * k;
+  let ty = (o.panY || 0) * k;
+  let rot = 0;
+  if (o.handheld !== false) {
+    const amp = o.handheldAmp !== undefined ? o.handheldAmp : 1.0;
+    tx += Math.sin(lt * 1.9) * 2.2 * amp + Math.cos(lt * 3.1) * 0.9 * amp;
+    ty += Math.cos(lt * 1.5) * 1.8 * amp + Math.sin(lt * 2.7) * 0.8 * amp;
+    rot += Math.sin(lt * 1.3) * 0.0022 * amp;
+  }
+  if (o.shakeAt !== undefined && lt >= o.shakeAt) {
+    const dt = lt - o.shakeAt;
+    const shDur = o.shakeDur || 0.35;
+    if (dt <= shDur) {
+      const decay = Math.pow(1 - dt / shDur, 2) * (o.shakeAmp || 9);
+      tx += Math.sin(dt * 95) * decay;
+      ty += Math.cos(dt * 115) * decay * 0.8;
+      rot += Math.sin(dt * 80) * 0.01 * (1 - dt / shDur);
+    }
+  }
+  const apply = () => {
+    c.translate(fx + tx, fy + ty);
+    if (rot) c.rotate(rot);
+    c.scale(scale, scale);
+    c.translate(-fx, -fy);
+  };
+  if (typeof drawFn === 'function') {
+    c.save();
+    apply();
+    drawFn();
+    c.restore();
+  } else {
+    apply();
+  }
 }
 
 // ----------------------------------------------------------------- POSES (2-Segment FK)
@@ -97,10 +186,24 @@ function poseKneel(t, o = {}) {
   };
 }
 function poseSit(t, o = {}) {
+  const isCurb = Boolean(o.curb || o.low);
+  const breathe = Math.sin(t * 2.0) * 0.012;
   return {
-    by: 60, lean: o.lean !== undefined ? o.lean : -0.05,
-    legs: o.legs || [{ a: 1.25, b: 2.1 }, { a: 1.15, b: 2.0 }],
-    arms: o.arms || [{ a: 0.9, b: 0.9 }, { a: 0.8, b: 1.0 }],
+    by: o.by !== undefined ? o.by : (isCurb ? 52 : 32),
+    lean: o.lean !== undefined ? o.lean : ((isCurb ? 0.08 : 0.02) + breathe),
+    legs: o.legs || (isCurb
+      ? [{ a: 1.72, b: 1.56 }, { a: 1.62, b: 1.48 }]
+      : [{ a: 1.32, b: 1.24 }, { a: 1.24, b: 1.18 }]),
+    arms: o.arms || [{ a: 0.36, b: 1.02 }, { a: 0.28, b: 0.98 }],
+    tilt: o.tilt || 0
+  };
+}
+function poseSquat(t, o = {}) {
+  return {
+    by: o.by !== undefined ? o.by : 58,
+    lean: o.lean !== undefined ? o.lean : 0.22,
+    legs: o.legs || [{ a: 1.85, b: 2.01 }, { a: 1.74, b: 1.90 }],
+    arms: o.arms || [{ a: 0.55, b: 0.95 }, { a: 0.45, b: 0.90 }],
     tilt: o.tilt || 0
   };
 }
@@ -153,18 +256,23 @@ const TON = PROTAGONIST;
 
 function drawPerson(c, x, y, s, o = {}) {
   const P = o.pose || poseStand(o.t || 0), K = { ...PROTAGONIST, ...(o.colors || {}) };
-  const thin = o.thin ? 0.84 : 1;
+  const hairStyle = o.hairStyle || (o.female ? 'long' : 'short');
+  const isFem = !!(o.female || o.sinh || hairStyle === 'long' || hairStyle === 'bun');
+  const thin = (o.thin ? 0.84 : 1) * (isFem ? 0.92 : 1);
   const shiverX = o.shiver ? Math.sin((o.t || 0) * 42) * 1.6 : 0;
-  c.save(); c.translate(x + shiverX, y); c.scale(s * (o.dir || 1), s);
+  c.save(); c.translate(x + shiverX, y); const _rc = applyShortsRigComp(c); c.scale(s * (o.dir || 1), s);
   if (o.shadow !== false) { c.fillStyle = 'rgba(0,0,0,0.22)'; c.beginPath(); c.ellipse(0, 0, 34, 6, 0, 0, TAU); c.fill(); }
-  const by = P.by || 0, hipY = -92 + by, torsoH = 64;
-  const leg = (hx, L, col, sh) => {
+  const by = P.by || 0, hipY = -92 + by, torsoH = 64, lean = P.lean || 0;
+  const legPts = (hx, L) => {
     const kx = hx + 45 * Math.sin(L.a), ky = hipY + 45 * Math.cos(L.a);
     const sa = L.a - L.b, ax = kx + 45 * Math.sin(sa), ay = ky + 45 * Math.cos(sa);
+    return { kx, ky, ax, ay };
+  };
+  const leg = (hx, L, col, sh) => {
+    const { kx, ky, ax, ay } = legPts(hx, L);
     limb(c, hx, hipY, kx, ky, 16 * thin, col, sh); limb(c, kx, ky, ax, ay, 14 * thin, col, sh);
     c.fillStyle = K.shoe; rr(c, ax - 6, ay - 5, 22, 9, 4); c.fill();
   };
-  c.save(); c.rotate(P.lean || 0);
   const sh = (i) => [14 * thin * (i ? -1 : 1) * 0.3, -144 + by];
   const arm = (i, A, col) => {
     const [sx, sy] = sh(i);
@@ -172,32 +280,95 @@ function drawPerson(c, x, y, s, o = {}) {
     const fa = A.a + A.b, wx = ex + 30 * Math.sin(fa), wy = ey + 30 * Math.cos(fa);
     limb(c, sx, sy, ex, ey, 13 * thin, col, K.shirtSh); limb(c, ex, ey, wx, wy, 11 * thin, K.skin, K.skinSh);
     c.fillStyle = K.skin; c.beginPath(); c.arc(wx, wy, 6.5, 0, TAU); c.fill();
-    return [wx, wy];
+    return [wx, wy, fa];
   };
+
+  // Back limbs & behind-shoulder long hair
+  leg(-6, P.legs[1], o.sinh ? mix(K.skinSh, '#000000', 0.15) : mix(K.pants, '#000000', 0.25), null);
+  c.save(); c.rotate(lean);
+  const backArm = arm(1, P.arms[1], mix(K.shirt, '#000000', 0.18));
+  if (hairStyle === 'long' && !o.back) {
+    const hairSway = Math.sin((o.t || 0) * 4.5) * 2.5;
+    c.fillStyle = mix(K.hair, '#000000', 0.22);
+    c.beginPath();
+    c.moveTo(-29, -206 + by);
+    c.quadraticCurveTo(-34 + hairSway, -155 + by, -30 + hairSway, -116 + by);
+    c.lineTo(14 + hairSway * 0.4, -118 + by);
+    c.quadraticCurveTo(26, -158 + by, 26, -204 + by);
+    c.closePath(); c.fill();
+  }
   c.restore();
 
-  // Back limbs
-  leg(-6, P.legs[1], mix(K.pants, '#000000', 0.25), null);
-  c.save(); c.rotate(P.lean || 0); arm(1, P.arms[1], mix(K.shirt, '#000000', 0.18)); c.restore();
+  // Front leg drawn underneath draped sinh if wearing Thai skirt
+  if (o.sinh) leg(6, P.legs[0], K.skin, K.skinSh);
 
-  // Torso (with continuous trapezius slope)
-  c.save(); c.rotate(P.lean || 0);
-  c.fillStyle = cyl(c, -22 * thin, 44 * thin, K.shirt, K.shirtHi, K.shirtSh); rr(c, -22 * thin, -152 + by, 44 * thin, torsoH, 12); c.fill();
-  c.fillStyle = K.pants; rr(c, -21 * thin, -98 + by, 42 * thin, 14, 5); c.fill();
+  // Torso (with female cut, swollen belly, or traditional shoulder sash)
+  c.save(); c.rotate(lean);
+  const chestW = (isFem ? 38 : 44) * thin, chestX = -chestW / 2;
+  const hipW = (isFem ? 44 : 42) * thin;
+  c.fillStyle = cyl(c, chestX, chestW, K.shirt, K.shirtHi, K.shirtSh); rr(c, chestX, -152 + by, chestW, torsoH, 12); c.fill();
+  if (o.swollenBelly) {
+    c.fillStyle = cyl(c, -12, 38, K.shirt, K.shirtHi, K.shirtSh);
+    c.beginPath(); c.ellipse(9 * thin, -110 + by, 18, 15, 0.12, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,0.22)'; c.lineWidth = 2;
+    c.beginPath(); c.arc(9 * thin, -108 + by, 16, 0.15 * Math.PI, 0.78 * Math.PI); c.stroke();
+  }
+  c.fillStyle = o.sinh ? (typeof o.sinh === 'string' ? o.sinh : (K.sinh || '#4A2525')) : K.pants;
+  rr(c, -hipW / 2, -98 + by, hipW, 14, 5); c.fill();
+  if (o.sash) {
+    const sashCol = typeof o.sash === 'string' ? o.sash : '#991B1B';
+    c.strokeStyle = sashCol; c.lineWidth = 10; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(-chestW * 0.42, -150 + by); c.lineTo(hipW * 0.42, -94 + by); c.stroke();
+    c.strokeStyle = 'rgba(253, 230, 138, 0.45)'; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(-chestW * 0.42 + 2, -150 + by); c.lineTo(hipW * 0.42 + 2, -94 + by); c.stroke();
+    // Dangling end at hip
+    c.fillStyle = sashCol; rr(c, hipW * 0.32, -96 + by, 9, 28, 3); c.fill();
+  }
   c.strokeStyle = 'rgba(0,0,0,0.12)'; c.lineWidth = 2; c.beginPath(); c.moveTo(-7, -152 + by); c.lineTo(0, -142 + by); c.lineTo(7, -152 + by); c.stroke();
   if (o.tapeArm) { c.fillStyle = '#C3C7CC'; for (let k = 0; k < 3; k++) { rr(c, -20 * thin, -140 + by + k * 14, 40 * thin, 7, 2); c.fill(); } }
   c.fillStyle = K.skin; rr(c, -6, -162 + by, 12, 14, 3); c.fill();
 
   // Head
   c.save(); c.translate(0, -190 + by); c.rotate(P.tilt || 0);
+  if (hairStyle === 'bun') {
+    c.fillStyle = mix(K.hair, '#000000', 0.14);
+    c.beginPath(); c.ellipse(o.back ? 0 : -22, -18, 12, 11, -0.25, 0, TAU); c.fill();
+    c.strokeStyle = '#3F2E21'; c.lineWidth = 2;
+    c.beginPath(); c.ellipse(o.back ? 0 : -18, -17, 7, 10, -0.25, 0, TAU); c.stroke();
+  }
   c.fillStyle = cyl(c, -26, 52, K.skin, K.skinHi, K.skinSh); rr(c, -26, -32, 52, 62, 22); c.fill();
   c.fillStyle = K.hair;
   if (o.back) {
-    rr(c, -27, -35, 54, 54, [22, 22, 14, 14]); c.fill();
+    if (hairStyle === 'long') {
+      rr(c, -29, -36, 58, 86, [24, 24, 14, 14]); c.fill();
+    } else if (hairStyle === 'bun') {
+      rr(c, -27, -35, 54, 48, [22, 22, 16, 16]); c.fill();
+      c.fillStyle = mix(K.hair, '#000000', 0.18);
+      c.beginPath(); c.ellipse(0, -18, 14, 12, 0, 0, TAU); c.fill();
+    } else {
+      rr(c, -27, -35, 54, 54, [22, 22, 14, 14]); c.fill();
+    }
   } else {
-    rr(c, -28, -36, 56, 26, [22, 22, 6, 6]); c.fill();
-    c.beginPath(); c.moveTo(-28, -16); c.lineTo(-28, 4); c.lineTo(-22, -12); c.fill();
-    c.beginPath(); c.moveTo(-10, -12); c.lineTo(8, -12); c.lineTo(-4, -4); c.fill();
+    if (hairStyle === 'long') {
+      c.beginPath();
+      c.arc(0, -12, 28, Math.PI, 0);
+      c.lineTo(28, 22);
+      c.quadraticCurveTo(24, 8, 21, -8);
+      c.quadraticCurveTo(10, -18, -2, -14);
+      c.quadraticCurveTo(-18, -16, -24, 16);
+      c.lineTo(-28, 22);
+      c.closePath(); c.fill();
+    } else if (hairStyle === 'bun') {
+      c.beginPath();
+      c.arc(0, -12, 27, Math.PI, 0);
+      c.quadraticCurveTo(14, -20, 0, -16);
+      c.quadraticCurveTo(-16, -20, -27, -8);
+      c.closePath(); c.fill();
+    } else {
+      rr(c, -28, -36, 56, 26, [22, 22, 6, 6]); c.fill();
+      c.beginPath(); c.moveTo(-28, -16); c.lineTo(-28, 4); c.lineTo(-22, -12); c.fill();
+      c.beginPath(); c.moveTo(-10, -12); c.lineTo(8, -12); c.lineTo(-4, -4); c.fill();
+    }
     const fx = o.profile ? 8 : 3, ex = o.expr || 'neutral';
     const eyeR = ex === 'shock' ? 4.2 : 3.3;
     // Under-eye fatigue bags
@@ -210,7 +381,7 @@ function drawPerson(c, x, y, s, o = {}) {
       c.beginPath(); c.arc(sx + fx, -3, eyeR, 0, TAU); c.fill();
       c.fillStyle = '#fff'; c.beginPath(); c.arc(sx + fx + 1.2, -4.3, 1, 0, TAU); c.fill(); c.fillStyle = '#141414';
     }
-    c.strokeStyle = '#141414'; c.lineWidth = 2.6; c.lineCap = 'round';
+    c.strokeStyle = '#141414'; c.lineWidth = isFem ? 2.1 : 2.6; c.lineCap = 'round';
     const bi = ex === 'fear' || ex === 'shock' ? -3 : ex === 'focus' ? 3 : 0;
     c.beginPath(); c.moveTo(-15 + fx, -12); c.lineTo(-6 + fx, -12 + bi); c.stroke();
     c.beginPath(); c.moveTo(15 + fx, -12); c.lineTo(6 + fx, -12 + bi); c.stroke();
@@ -231,12 +402,69 @@ function drawPerson(c, x, y, s, o = {}) {
   c.restore();
   c.restore();
 
-  // Front limbs & Hand-Socket Props
-  leg(6, P.legs[0], K.pants, K.pantsSh);
-  c.save(); c.rotate(P.lean || 0);
-  const frontPose = o.coverMouth ? { a: 2.35, b: 1.05 } : P.arms[0];
+  // Traditional Isan Phaa Sinh (ผ้าซิ่น) OR Trousers front leg
+  if (o.sinh) {
+    const p0 = legPts(6, P.legs[0]), p1 = legPts(-6, P.legs[1]);
+    const sinhCol = typeof o.sinh === 'string' ? o.sinh : (K.sinh || '#4A2525');
+    const sinhSh = mix(sinhCol, '#000000', 0.34);
+    const sinhHem = K.sinhHem || '#7F2E2E';
+    const wCx = -hipY * Math.sin(lean), wY = hipY * Math.cos(lean) - 6;
+    const wL = wCx - 20 * thin, wR = wCx + 20 * thin;
+    let bL, bR, bY, kBendX = null, kBendY = null;
+    if (by > 20) {
+      kBendX = Math.max(p0.kx, p1.kx, wR) + 12;
+      kBendY = Math.min(p0.ky, p1.ky) - 6;
+      bY = Math.max(p0.ay, p1.ay) - 4;
+      bL = Math.min(wL - 4, p1.kx - 14);
+      bR = Math.max(p0.ax + 8, p0.kx * 0.8 + 6);
+    } else {
+      bY = Math.min(-10, Math.max(p0.ay, p1.ay) - 10);
+      bL = Math.min(wL - 3, p0.ax - 11, p1.ax - 11);
+      bR = Math.max(wR + 3, p0.ax + 12, p1.ax + 12);
+    }
+    c.save();
+    c.beginPath();
+    c.moveTo(wL, wY); c.lineTo(wR, wY);
+    if (kBendX !== null) c.lineTo(kBendX, kBendY);
+    c.lineTo(bR, bY); c.lineTo(bL, bY);
+    c.closePath();
+    c.clip();
+    c.fillStyle = cyl(c, bL, Math.max(30, bR - bL), sinhCol, mix(sinhCol, '#FFFFFF', 0.14), sinhSh);
+    c.fillRect(bL - 10, wY - 10, (bR - bL) + 60, (bY - wY) + 30);
+    // Horizontal woven bands + Isan Teen-Sinh border hem
+    c.strokeStyle = 'rgba(255,255,255,0.09)'; c.lineWidth = 2;
+    for (let ry = wY + 14; ry < bY - 12; ry += 14) {
+      c.beginPath(); c.moveTo(bL - 10, ry); c.lineTo(bR + 40, ry); c.stroke();
+    }
+    c.fillStyle = sinhHem; c.fillRect(bL - 10, bY - 11, (bR - bL) + 60, 14);
+    c.fillStyle = 'rgba(250, 204, 21, 0.25)'; c.fillRect(bL - 10, bY - 12, (bR - bL) + 60, 2.5);
+    c.restore();
+  } else {
+    leg(6, P.legs[0], K.pants, K.pantsSh);
+  }
+
+  // Front limb & Wrist-Socket Held Props (with thumb & curled finger grip)
+  c.save(); c.rotate(lean);
+  let frontPose = o.coverMouth ? { a: 2.35, b: 1.05 } : P.arms[0];
+  if (o.torch && !o.keepArmPose) {
+    frontPose = { a: 0.74 + Math.sin((o.t || 0) * 5) * 0.06, b: 0.72 };
+  }
   const front = arm(0, frontPose, K.shirt);
-  if (o.bag) {
+  const wrapGrip = (hx, hy, ang = 0) => {
+    c.save(); c.translate(hx, hy); c.rotate(ang);
+    c.fillStyle = K.skinSh; rr(c, -4.5, -5.5, 9, 11, 3.5); c.fill();
+    c.fillStyle = K.skin; rr(c, -3.5, -4.5, 8, 9, 3); c.fill();
+    c.restore();
+  };
+  if (o.bundle) {
+    const bx = front[0], byp = front[1];
+    c.fillStyle = '#574636';
+    c.beginPath(); c.moveTo(bx - 3, byp); c.lineTo(bx - 16, byp + 26);
+    c.quadraticCurveTo(bx, byp + 38, bx + 16, byp + 26); c.lineTo(bx + 3, byp); c.closePath(); c.fill();
+    c.strokeStyle = '#3F2E21'; c.lineWidth = 2.5;
+    c.beginPath(); c.moveTo(bx - 6, byp + 7); c.lineTo(bx + 6, byp + 7); c.stroke();
+    wrapGrip(bx, byp, 0);
+  } else if (o.bag) {
     c.fillStyle = '#EDEDE8';
     c.beginPath(); c.moveTo(front[0] - 4, front[1]); c.lineTo(front[0] - 16, front[1] + 46); c.lineTo(front[0] + 16, front[1] + 46); c.lineTo(front[0] + 6, front[1]); c.fill();
     c.fillStyle = 'rgba(0,0,0,0.08)'; c.fillRect(front[0] - 14, front[1] + 30, 28, 4);
@@ -247,8 +475,49 @@ function drawPerson(c, x, y, s, o = {}) {
   }
   if (o.flashlight) {
     drawTacticalFlashlight(c, front[0] + 8, front[1], 1, o.beamOn !== false);
+    wrapGrip(front[0], front[1], 0);
+  }
+  if (o.torch) {
+    const tx = front[0], ty = front[1], tAng = typeof o.torch === 'object' && o.torch.ang != null ? o.torch.ang : 0.24;
+    const tSeed = typeof o.torch === 'object' && o.torch.seed != null ? o.torch.seed : 1;
+    const tt = o.t || 0;
+    c.save(); c.translate(tx, ty); c.rotate(tAng);
+    c.fillStyle = '#4A3728'; rr(c, -3.5, -52, 7, 68, 3); c.fill();
+    c.fillStyle = '#291E16'; rr(c, -6.5, -62, 13, 15, 3); c.fill();
+    const fl = 0.85 + 0.15 * Math.sin(tt * 22 + tSeed * 5);
+    const sway = Math.sin(tt * 14 + tSeed * 3) * 4;
+    glow(c, 0, -76, 86 * fl, '#F97316', 0.34);
+    c.fillStyle = '#EA580C';
+    c.beginPath(); c.moveTo(-10, -60); c.quadraticCurveTo(-12, -82 * fl, sway, -100 * fl); c.quadraticCurveTo(12, -82 * fl, 10, -60); c.closePath(); c.fill();
+    c.fillStyle = '#FACC15';
+    c.beginPath(); c.moveTo(-5, -62); c.quadraticCurveTo(-6, -74 * fl, sway * 0.6, -86 * fl); c.quadraticCurveTo(6, -74 * fl, 5, -62); c.closePath(); c.fill();
+    c.restore();
+    wrapGrip(tx, ty, tAng);
+  }
+  if (o.wand) {
+    const wx = front[0], wy = front[1], wAng = typeof o.wand === 'object' && o.wand.ang != null ? o.wand.ang : 1.05;
+    const wLen = typeof o.wand === 'object' && o.wand.len != null ? o.wand.len : 88;
+    c.save(); c.translate(wx, wy); c.rotate(wAng);
+    c.fillStyle = cyl(c, -3, 6, '#C69249', '#E2B870', '#8A5E24');
+    c.beginPath(); c.moveTo(-3, 14); c.lineTo(3, 14); c.lineTo(1.8, -wLen); c.lineTo(-1.8, -wLen); c.closePath(); c.fill();
+    c.fillStyle = '#B91C1C'; c.fillRect(-3.5, -18, 7, 5);
+    c.restore();
+    wrapGrip(wx, wy, wAng);
+  }
+  if (o.weaving) {
+    const mx = (front[0] + backArm[0]) * 0.5 + 8, my = (front[1] + backArm[1]) * 0.5 + 2;
+    c.save(); c.translate(mx, my);
+    c.fillStyle = cyl(c, -16, 32, '#B68D4C', '#D6AF6E', '#8A6530');
+    rr(c, -16, -12, 32, 24, 6); c.fill();
+    c.strokeStyle = '#6B4E23'; c.lineWidth = 1.6;
+    for (let sOff = -2; sOff <= 2; sOff++) {
+      c.beginPath(); c.moveTo(sOff * 5, -12); c.lineTo(sOff * 7 + Math.sin((o.t || 0) * 6 + sOff) * 2, -24); c.stroke();
+    }
+    c.restore();
+    wrapGrip(front[0], front[1], 0.4);
   }
   c.restore();
+  endShortsRigComp(_rc);
   c.restore();
 }
 
@@ -260,7 +529,7 @@ function drawEntity(c, x, y, s, o = {}) {
   const suitSh = o.suitSh || (o.dark ? '#2A3039' : '#454C57');
   const skin = o.skin || '#CFD3D8';
 
-  c.save(); c.translate(x, y); c.scale(s * (o.dir || 1), s * (o.tall || 1.14));
+  c.save(); c.translate(x, y); const _rc = applyShortsRigComp(c); c.scale(s * (o.dir || 1), s * (o.tall || 1.14));
   if (o.shadow !== false) { c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.ellipse(0, 0, 40, 7, 0, 0, TAU); c.fill(); }
   const by = P.by || 0, hipY = -96 + by;
   const leg = (hx, L, col) => {
@@ -314,7 +583,7 @@ function drawEntity(c, x, y, s, o = {}) {
   } else {
     c.fillStyle = 'rgba(0,0,0,0.05)'; c.beginPath(); c.ellipse(2, 4, 14, 18, 0, 0, TAU); c.fill();
   }
-  c.restore(); c.restore();
+  c.restore(); endShortsRigComp(_rc); c.restore();
 }
 
 function drawJanitor(c, x, y, s, o = {}) {
@@ -334,17 +603,38 @@ function drawBucket(c, x, y, s, dark) {
 // --------------------------------------------------------- MACRO POV FOREARM (400px — NEVER floating!)
 function hand(c, x, y, ang = 0, s = 1, o = {}) {
   const K = { ...PROTAGONIST, ...(o.colors || {}) };
+  const shaftGrip = !!(o.wand || o.marker || o.knife || o.grip);
+  const horzGrip = !!(o.flashlight || o.radio);
   c.save(); c.translate(x, y); c.rotate(ang); c.scale(s, s);
   c.fillStyle = cyl(c, -26, 52, K.skin, K.skinHi, K.skinSh);
   rr(c, -26, 0, 52, 400, 22); c.fill();
   rr(c, -32, -38, 64, 54, 20); c.fill();
-  for (let i = 0; i < 4; i++) { rr(c, -28 + i * 15, -62, 12, 32, 6); c.fill(); }
+  if (!shaftGrip && !horzGrip) {
+    for (let i = 0; i < 4; i++) { rr(c, -28 + i * 15, -62, 12, 32, 6); c.fill(); }
+  }
   if (o.sleeve) { c.fillStyle = o.sleeveColor || K.shirt; rr(c, -30, 90, 60, 320, 14); c.fill(); }
   if (o.watch) {
     const label = typeof o.watch === 'string' ? o.watch : '19:20';
     c.fillStyle = '#222'; c.fillRect(-29, 32, 58, 16);
     c.fillStyle = '#0D1B1E'; rr(c, -18, 26, 36, 28, 5); c.fill();
     txt(c, label, 0, 45, 13, '#5EEAD4', 700, 'center');
+  }
+  if (o.wand) {
+    const wLen = o.wandLen || 380;
+    c.save(); c.rotate(o.wandAngle || 0);
+    c.fillStyle = cyl(c, -7, 14, '#C69249', '#E6BF78', '#80561E');
+    c.beginPath(); c.moveTo(-6.5, 42); c.lineTo(6.5, 42); c.lineTo(4, -wLen); c.lineTo(-4, -wLen); c.closePath(); c.fill();
+    // Bamboo/rattan nodes
+    c.strokeStyle = '#6B4516'; c.lineWidth = 2.5;
+    for (let ny = -58; ny > -wLen + 20; ny -= 62) {
+      const nw = lerp(6, 4.2, -ny / wLen);
+      c.beginPath(); c.moveTo(-nw, ny); c.lineTo(nw, ny); c.stroke();
+    }
+    // Red ritual cord tie above fist
+    c.fillStyle = '#B91C1C'; rr(c, -7, -64, 14, 12, 3); c.fill();
+    c.strokeStyle = '#DC2626'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(-6, -54); c.quadraticCurveTo(-14, -36, -10, -24); c.stroke();
+    c.restore();
   }
   if (o.marker) {
     c.save(); c.rotate(-0.5);
@@ -373,6 +663,29 @@ function hand(c, x, y, ang = 0, s = 1, o = {}) {
     c.fillStyle = '#22C55E'; c.beginPath(); c.arc(10, -8, 3.5, 0, TAU); c.fill();
     c.strokeStyle = '#09090B'; c.lineWidth = 6; c.lineCap = 'round';
     c.beginPath(); c.moveTo(-14, -48); c.lineTo(-14, -96); c.stroke();
+    c.restore();
+  }
+  // Curled fingers & thumb wrapping OVER held props
+  if (shaftGrip) {
+    const fCol = cyl(c, -26, 52, K.skin, K.skinHi, K.skinSh);
+    for (let i = 0; i < 4; i++) {
+      const fy = -46 + i * 12;
+      c.fillStyle = K.skinSh; rr(c, -25, fy + 1.5, 48, 11, 5); c.fill();
+      c.fillStyle = fCol; rr(c, -24, fy, 45, 10, 4.5); c.fill();
+    }
+    // Opposing thumb clasping diagonally across top-right of fist
+    c.save(); c.translate(16, -24); c.rotate(-0.55);
+    c.fillStyle = K.skinSh; rr(c, -12, -8, 30, 16, 7); c.fill();
+    c.fillStyle = K.skin; rr(c, -11, -7, 28, 14, 6.5); c.fill();
+    c.restore();
+  } else if (horzGrip) {
+    for (let i = 0; i < 4; i++) {
+      c.fillStyle = K.skinSh; rr(c, -24 + i * 13, -59, 11, 21, 5); c.fill();
+      c.fillStyle = K.skin; rr(c, -23.5 + i * 13, -58, 10, 19, 4.5); c.fill();
+    }
+    c.save(); c.translate(20, -28); c.rotate(-0.4);
+    c.fillStyle = K.skinSh; rr(c, -12, -7, 26, 14, 6); c.fill();
+    c.fillStyle = K.skin; rr(c, -11, -6, 24, 12, 5.5); c.fill();
     c.restore();
   }
   c.restore();
@@ -612,7 +925,13 @@ function fitTextSize(c, s, maxW, startSize, minSize = 14, weight = 700) {
 }
 function cardPos(pos, w, h) {
   const shorts = typeof window !== 'undefined' && window.SHORTS_MODE;
-  const maxX = shorts ? (W - w - 140) : (W - w - 46);
+  if (shorts) {
+    const safeW = SHORTS_W - 140 - 56;
+    const sx = clamp(Math.round(56 + (safeW - w) / 2), 48, Math.max(48, SHORTS_W - w - 140));
+    const sy = pos === 'tl' || pos === 'left' ? 490 : 510;
+    return [sx, clamp(sy, 340, SHORTS_H - h - 420)];
+  }
+  const maxX = W - w - 46;
   let x, y;
   if (pos === 'tl' || pos === 'left') { x = 56; y = 54; }
   else if (pos === 'tr') { x = W - w - 56; y = 178; }
@@ -654,6 +973,8 @@ function normalizeCard(s) {
 }
 
 function drawCard(c, rawCard, lt, sceneDur) {
+  // Disabled by default for clean cinematic storytelling (opt-in only if __ENABLE_STORY_HUD === true)
+  if (typeof window === 'undefined' || !window.__ENABLE_STORY_HUD || window.__HIDE_HUD) return;
   const card = rawCard && !rawCard.pos && !rawCard.head && !rawCard.rows && !rawCard.items && !Array.isArray(rawCard.title)
     ? normalizeCard({ hud: rawCard }) : rawCard;
   if (!card) return;
@@ -744,7 +1065,9 @@ function drawCard(c, rawCard, lt, sceneDur) {
 }
 
 function drawFlow(c, card, lt) {
-  const cx = 480, top = 110;
+  if (typeof window === 'undefined' || !window.__ENABLE_STORY_HUD || window.__HIDE_HUD) return;
+  const shorts = isShortsMode();
+  const cx = shorts ? 485 : 480, top = shorts ? 500 : 110;
   const headSz = fitTextSize(c, card.head, 640, 22, 16, 700);
   c.font = `700 ${headSz}px ${FONT}`; const hw = Math.min(700, c.measureText(card.head).width + 44);
   c.fillStyle = '#18181B'; rr(c, cx - hw / 2, top, hw, 44, 22); c.fill();
@@ -770,10 +1093,13 @@ function drawFlow(c, card, lt) {
   });
 }
 
-// Theme-Agnostic Telemetry Renderer (supports Energy/Kcal, Tide, Temp, O2, dB, or Custom Bar)
+// Theme-Agnostic Telemetry Renderer (disabled by default for clean cinematic stories)
 function drawTele(c, s, lt) {
+  if (typeof window === 'undefined' || !window.__ENABLE_STORY_TELE || window.__HIDE_HUD) return;
   const tl = s.tele || s.telemetry; if (!tl) return;
-  const x = W - 46, y = 40, w = 320;
+  const shorts = isShortsMode();
+  if (shorts && typeof window !== 'undefined' && window.__HIDE_SHORTS_TELE) return;
+  const x = shorts ? (SHORTS_W - 150) : (W - 46), y = shorts ? 425 : 40, w = 344;
   const dayStr = tl.day === 0 ? '● ปกติ · BASELINE' : `● ${tl.day}`;
   const timeStr = tl.time || '';
   const subLabel = tl.label || tl.shift || '';
@@ -801,8 +1127,11 @@ function drawTele(c, s, lt) {
   const h = 62 + (bar ? 30 : 0) + (subLabel ? 26 : 0);
   c.fillStyle = 'rgba(14,14,18,0.84)'; rr(c, x - w, y, w, h, 10); c.fill();
   c.strokeStyle = 'rgba(255,255,255,0.14)'; c.lineWidth = 1; rr(c, x - w, y, w, h, 10); c.stroke();
-  txt(c, dayStr, x - w + 16, y + 26, fitTextSize(c, dayStr, w - 120, 15, 12, 600), '#F5EFE6', 600);
-  if (timeStr) txt(c, timeStr, x - 16, y + 46, 30, '#fff', 700, 'right');
+  const timeSz = timeStr ? fitTextSize(c, timeStr, 128, 28, 15, 700) : 28;
+  const timeW = timeStr ? measure(c, timeStr, timeSz, 700) : 0;
+  const leftMaxW = Math.max(120, w - 38 - (timeStr ? timeW + 10 : 0));
+  txt(c, dayStr, x - w + 16, y + 26, fitTextSize(c, dayStr, leftMaxW, 15, 11, 600), '#F5EFE6', 600);
+  if (timeStr) txt(c, timeStr, x - 16, y + 42, timeSz, '#fff', 700, 'right');
 
   let statusTxt = tl.statusText || '';
   let statusCol = '#D6D3D1';
@@ -812,15 +1141,20 @@ function drawTele(c, s, lt) {
   else if (tl.status === 'SAFE') { statusTxt = statusTxt || '◻ ปลอดภัย'; statusCol = '#9AE6B4'; }
   else if (tl.status === 'WARN') { statusTxt = statusTxt || '◻ ผิดปกติ · เฝ้าระวัง'; statusCol = '#FBBF24'; }
   else if (tl.lights === true) { statusTxt = statusTxt || '◻ ไฟเปิด'; statusCol = '#D6D3D1'; }
-  if (statusTxt) txt(c, statusTxt, x - w + 16, y + 50, 14, statusCol, 600);
+  if (statusTxt) txt(c, statusTxt, x - w + 16, y + 50, fitTextSize(c, statusTxt, leftMaxW, 14, 11, 600), statusCol, 600);
 
   let yy = y + 62;
   if (bar) {
     const r = clamp(bar.ratio !== undefined ? bar.ratio : (bar.value / (bar.max || 100)));
-    txt(c, bar.label || 'สถานะ', x - w + 16, yy + 18, 13, '#A8A29E', 600);
-    c.fillStyle = 'rgba(255,255,255,0.12)'; rr(c, x - w + 86, yy + 8, 126, 10, 5); c.fill();
-    c.fillStyle = bar.color || '#FACC15'; rr(c, x - w + 86, yy + 8, Math.max(6, 126 * r), 10, 5); c.fill();
-    txt(c, bar.text || `${bar.value}${bar.unit || ''}`, x - 16, yy + 19, 13, bar.warn ? '#FCA5A5' : '#E7E5E4', 600, 'right');
+    const lblText = bar.label || 'สถานะ';
+    const valText = bar.text || `${bar.value}${bar.unit || ''}`;
+    const lblSz = fitTextSize(c, lblText, 112, 13, 10, 600);
+    const valSz = fitTextSize(c, valText, 64, 13, 10, 600);
+    txt(c, lblText, x - w + 16, yy + 18, lblSz, '#A8A29E', 600);
+    const barX = x - w + 132, barW = 126;
+    c.fillStyle = 'rgba(255,255,255,0.12)'; rr(c, barX, yy + 8, barW, 10, 5); c.fill();
+    c.fillStyle = bar.color || '#FACC15'; rr(c, barX, yy + 8, Math.max(6, barW * r), 10, 5); c.fill();
+    txt(c, valText, x - 16, yy + 19, valSz, bar.warn ? '#FCA5A5' : '#E7E5E4', 600, 'right');
     yy += 30;
   }
 
@@ -834,32 +1168,26 @@ function drawTele(c, s, lt) {
     const distVal = Array.isArray(tl.dist)
       ? `${Math.round(lerp(tl.dist[0], tl.dist[1], ease(lt / Math.max(1, s.dur - 1))))} ม.`
       : tl.distance;
-    c.fillStyle = CREAM; rr(c, x - 246, dy, 246, 44, 10); c.fill();
-    badge(c, x - 238, dy + 9, `● ${tl.distLabel || 'ระยะห่าง'}`, true);
-    txt(c, distVal, x - 14, dy + 31, fitTextSize(c, distVal, 96, 23, 15, 700), RED, 700, 'right');
+    const distTag = `● ${tl.distLabel || 'ระยะห่าง'}`;
+    const tagW = measure(c, distTag, 13, 700) + 22;
+    const valSz = fitTextSize(c, distVal, 112, 22, 14, 700);
+    const valW = measure(c, distVal, valSz, 700);
+    const pillW = Math.max(246, Math.ceil(tagW + valW + 34));
+    c.fillStyle = CREAM; rr(c, x - pillW, dy, pillW, 44, 10); c.fill();
+    badge(c, x - pillW + 8, dy + 9, distTag, true);
+    txt(c, distVal, x - 14, dy + 31, valSz, RED, 700, 'right');
   }
   c.restore();
 }
 
 function drawChapter(c, chap, lt) {
-  const label = Array.isArray(chap) ? chap[0] : (chap.label || '');
-  const title = Array.isArray(chap) ? chap[1] : (chap.title || '');
-  const a = clamp(prog(lt, 0, 0.35)) * (1 - prog(lt, 2.8, 3.3));
-  if (a <= 0) return;
-  c.save(); c.globalAlpha = a;
-  const g = c.createLinearGradient(0, H / 2 - 120, 0, H / 2 + 120);
-  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, 'rgba(0,0,0,0.72)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-  c.fillStyle = g; c.fillRect(0, H / 2 - 120, W, 240);
-  const ox = (1 - easeOut(lt / 0.6)) * -30;
-  c.font = `600 20px ${FONT}`; const bw = c.measureText(label).width + 30;
-  c.fillStyle = RED; rr(c, W / 2 - bw / 2 + ox, H / 2 - 62, bw, 34, 17); c.fill();
-  txt(c, label, W / 2 + ox, H / 2 - 38, 20, '#fff', 600, 'center');
-  txt(c, title, W / 2 - ox, H / 2 + 28, fitTextSize(c, title, W - 120, 44, 24, 700), CREAM, 700, 'center');
-  c.restore();
+  // Permanently disabled: red chapter pill banners removed for clean cinematic video
+  return;
 }
 
-// --------------------------------------------------------- SUBTITLES (FRAMELESS — 9:16 Safe Zone Aware)
+// --------------------------------------------------------- SUBTITLES (FRAMELESS — Pop-In + Keyword Highlight + 9:16 Safe Zone Aware)
 function drawSub(c, s, lt) {
+  if (typeof window !== 'undefined' && window.__HIDE_HUD) return;
   if (!s.subs) return;
   const cue = s.subs.find(q => {
     const t0 = q.t0 !== undefined ? q.t0 : q.start;
@@ -867,10 +1195,105 @@ function drawSub(c, s, lt) {
     return lt >= t0 && lt < t1;
   });
   if (!cue) return;
+  const t0 = cue.t0 !== undefined ? cue.t0 : cue.start;
   const isShorts = typeof window !== 'undefined' && window.SHORTS_MODE;
-  const subY = isShorts ? Math.min(H - 42, 1420) : (H - 42);
-  const subSz = fitTextSize(c, cue.text, W - 120, 29, 20, 700);
-  c.save(); c.font = `700 ${subSz}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-  c.lineJoin = 'round'; c.lineWidth = 7; c.strokeStyle = 'rgba(9,9,11,0.92)'; c.strokeText(cue.text, W / 2, subY);
-  c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 10; c.fillStyle = '#fff'; c.fillText(cue.text, W / 2, subY); c.restore();
+  const ctaActive = isShorts && typeof window.__SHORTS_REM_SEC === 'number' && window.__SHORTS_REM_SEC <= 2.25 && window.__SHORTS_REM_SEC >= 0.04;
+  const subY = isShorts ? (ctaActive ? 1482 : Math.min(SHORTS_H - 42, 1500)) : (H - 42);
+  const maxSubW = isShorts ? (SHORTS_W - 220) : (W - 120);
+  const subSz = fitTextSize(c, cue.text, maxSubW, isShorts ? 42 : 29, isShorts ? 26 : 20, 700);
+  const subX = isShorts ? 495 : (W / 2);
+  const pop = easeBack(prog(lt, t0, t0 + 0.09));
+  const sc = 0.88 + 0.12 * pop;
+  const kwPattern = '(?<![\\u0E40-\\u0E44])(?:\\d+(?:[.,:]\\d+)?%?|กฎข้อ\\s*\\d+|ห้าม|ตาย|อันตราย|วิกฤต|คำพิพากษา|โรคระบาด|แพะรับบาป|ผีปอบ|อีปอบ|อำนาจมืด|อคติ|กรรมพันธุ์|หมอธรรม|ทายาทอสูร|อหิวาตกโรค|ไข้ป่า|ท้องป่อง|ตีหนึ่ง|ตีสอง|ตีสาม|ตีสี่|ตีห้า|วินาที|นาที|ชั่วโมง|เมตร|องศา|บาท)(?![\\u0E31\\u0E34-\\u0E3A\\u0E47-\\u0E4E])';
+  const kwSplitRe = new RegExp(`(${kwPattern})`, 'g');
+  const kwExactRe = new RegExp(`^${kwPattern}$`);
+  const dangerRe = /^(?:ห้าม|ตาย|อันตราย|วิกฤต|คำพิพากษา|ผีปอบ|อีปอบ|แพะรับบาป|โรคระบาด|อำนาจมืด)$/;
+  const parts = String(cue.text || '').split(kwSplitRe).filter(Boolean);
+
+  c.save();
+  c.font = `700 ${subSz}px ${FONT}`;
+  c.textAlign = 'left';
+  c.textBaseline = 'alphabetic';
+  c.lineJoin = 'round';
+  const widths = parts.map(p => c.measureText(p).width);
+  const totalW = widths.reduce((a, b) => a + b, 0);
+  c.translate(subX, subY);
+  c.scale(sc, sc);
+
+  c.lineWidth = 7;
+  c.strokeStyle = 'rgba(9,9,11,0.92)';
+  let px = -totalW / 2;
+  for (let i = 0; i < parts.length; i++) {
+    c.strokeText(parts[i], px, 0);
+    px += widths[i];
+  }
+
+  c.shadowColor = 'rgba(0,0,0,0.6)';
+  c.shadowBlur = 10;
+  px = -totalW / 2;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    const isDanger = dangerRe.test(p);
+    const isKw = !isDanger && kwExactRe.test(p);
+    c.fillStyle = isDanger ? '#F87171' : (isKw ? '#FACC15' : '#FFFFFF');
+    c.fillText(p, px, 0);
+    px += widths[i];
+  }
+  c.restore();
+}
+
+// Non-intrusive 2.2s silent Visual CTA inside 9:16 Safe Active Zone (replaces retention-killing cliché outro)
+function drawShortsEndingCTA(c, s, lt, t = 0, totalDur = 0) {
+  if (typeof window === 'undefined' || !window.SHORTS_MODE || window.__HIDE_HUD) return;
+  let remSec = null;
+  if (typeof window.__SHORTS_REM_SEC === 'number') {
+    remSec = window.__SHORTS_REM_SEC;
+  } else if (s && s.visualCta) {
+    remSec = Math.max(0, Number(s.dur || 0) - lt);
+  } else if (totalDur > 0) {
+    remSec = Math.max(0, totalDur - t);
+  }
+  if (remSec === null || remSec > 2.25 || remSec < 0.04) return;
+
+  const elapsed = 2.25 - remSec;
+  const a = clamp(prog(elapsed, 0, 0.25)) * clamp(remSec / 0.12);
+  if (a <= 0.02) return;
+
+  const isFollow = window.__SHORTS_IS_FINAL === false;
+  const badgeTxt = isFollow ? '+ ติดตาม' : '▶ คลิปเต็ม';
+  const label = (s && s.visualCta) || window.__SHORTS_CTA_TEXT || (isFollow
+    ? 'กดติดตามรอตอนจบ · คลิปเต็มหน้าช่อง'
+    : 'ดูเรื่องเต็มแบบไม่ตัด ที่คลิปยาวด้านล่าง');
+
+  const x = 68;
+  const y = 1544;
+  const h = 44;
+  const arrowBounce = Math.sin(elapsed * 11) * 4;
+  const badgeW = Math.ceil(measure(c, badgeTxt, 17, 800)) + 22;
+  const arrowZone = 26;
+  const lblSz = fitTextSize(c, label, 840 - badgeW - arrowZone - 32, 18, 13, 700);
+  const lblW = Math.ceil(measure(c, label, lblSz, 700));
+  const boxW = Math.min(846, badgeW + lblW + arrowZone + 28);
+
+  c.save();
+  c.globalAlpha = a;
+  c.shadowColor = 'rgba(0,0,0,0.55)';
+  c.shadowBlur = 16;
+  c.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  rr(c, x, y, boxW, h, 10);
+  c.fill();
+  c.shadowBlur = 0;
+  c.strokeStyle = 'rgba(239, 68, 68, 0.72)';
+  c.lineWidth = 1.8;
+  rr(c, x, y, boxW, h, 10);
+  c.stroke();
+
+  c.fillStyle = '#DC2626';
+  rr(c, x + 5, y + 5, badgeW, h - 10, 7);
+  c.fill();
+  txt(c, badgeTxt, x + 5 + badgeW / 2, y + 28, 17, '#FFFFFF', 800, 'center');
+
+  txt(c, label, x + badgeW + 16, y + 28.5, lblSz, '#F8FAFC', 700, 'left');
+  txt(c, '▼', x + boxW - 18, y + 29 + arrowBounce, 18, '#FACC15', 900, 'center');
+  c.restore();
 }

@@ -15,8 +15,11 @@
 // =============================================================================
 const VIEWS = (window.VIEWS = window.VIEWS || {});
 
-// Views where left-side diagrams/props should remain sharp behind right-side HUD cards
-window.NO_BLUR_VIEWS = ['macro_notebook_calc', 'tactical_blueprint_scan'];
+// Views kept intentionally sharp without soft focus
+window.NO_BLUR_VIEWS = [];
+
+// NOTE: Clean Cinematic Storytelling — NEVER draw infographic explainer boards,
+// bulleted text slides, classroom/medical lecture charts, or red chapter pills in views.js!
 
 // Example A: 2-Point Interior Corner + CCTV Monitor Framing (Instead of generic corridor!)
 VIEWS.platform_corridor = function (c, lt, s) {
@@ -38,65 +41,82 @@ VIEWS.platform_corridor = function (c, lt, s) {
   vignette(c, 0.72, 0.45);
 };
 
-// Example B: Open Exterior / Maritime Low-Angle Horizon (`outdoorStage`)
+// Example B: Open Exterior / Maritime Low-Angle Horizon (`outdoorStage` + Volumetric Spotlight Encounter)
 VIEWS.ots_entity_approach = function (c, lt, s) {
   outdoorStage(c, lt, {
-    skyTop: '#0B1324', skyBot: '#1D2B44', groundCol: '#132033',
-    horizonY: 430, water: true, ridgeH: 55
+    skyTop: '#0B1324', skyBot: '#193242', groundCol: '#132033',
+    horizonY: 420, water: true, ridgeH: 62
   });
 
-  // Pier / Deck foreground railing
-  c.fillStyle = '#273244'; c.fillRect(0, 520, W, 200);
-  glow(c, 880, 260, 320, '#38BDF8', 0.22);
+  // Misty circular full moon (aspect-compensated for 16:9 + 9:16 SHORTS_MODE) + water shimmer
+  c.save(); c.translate(640, 210);
+  const _mrc = applyShortsRigComp(c);
+  glow(c, 0, 0, 260, '#99F6E4', 0.24);
+  c.fillStyle = 'rgba(226, 245, 240, 0.88)';
+  c.beginPath(); c.arc(0, 0, 42, 0, TAU); c.fill();
+  endShortsRigComp(_mrc); c.restore();
+  c.fillStyle = 'rgba(153, 246, 228, 0.16)';
+  for (let i = 0; i < 6; i++) {
+    c.beginPath(); c.ellipse(640 + Math.sin(lt * 1.4 + i) * 14, 434 + i * 14, 84 - i * 9, 4, 0, 0, TAU); c.fill();
+  }
 
-  // Distant silhouette figure approaching across the pier
+  // Pier wooden decking & silhouette mooring bollards leading eye toward Entity
+  c.fillStyle = '#1E293B'; c.fillRect(0, 505, W, 215);
+  c.fillStyle = '#2A3649';
+  for (let px = 310; px <= 970; px += 110) {
+    c.fillRect(px - 8, 455, 16, 60);
+    c.fillRect(px - 10, 452, 20, 10);
+  }
+  c.strokeStyle = '#334155'; c.lineWidth = 4;
+  c.beginPath(); c.moveTo(310, 474); c.lineTo(970, 474); c.stroke();
+
+  // Eerie teal mist backlight + crimson threat glow around approaching Entity
   const approach = prog(lt, 0, s.dur || 6);
-  const ex = lerp(980, 720, approach);
-  drawEntity(c, ex, 535, lerp(0.68, 0.98, approach), {
-    t: lt, dark: true, prop: 'none', cap: false, reveal: 0.9, bloodSlits: false, eyeColor: '#EF4444'
+  const ex = lerp(700, 648, approach);
+  const es = lerp(1.18, 1.48, approach);
+  glow(c, ex, 340, 340, '#0D9488', 0.42);
+  glow(c, ex, 355, 160, '#EF4444', 0.22 + 0.08 * Math.sin(lt * 6));
+
+  // Towering menacing silhouette Entity centered near focal x=640 for impactful 16:9 + 9:16 covers
+  drawEntity(c, ex, 535, es, {
+    t: lt, dark: true, prop: 'none', cap: false, reveal: 0.96, bloodSlits: false, eyeColor: '#EF4444'
   });
 
-  // Foreground Over-the-Shoulder (OTS) Protagonist
-  drawPerson(c, 220, 850, 1.8, {
+  // Dramatic Over-the-Shoulder (OTS) Protagonist whose tactical flashlight beam hits Entity directly
+  drawPerson(c, 465, 685, 1.52, {
     t: lt, back: true, dir: 1,
     colors: { shirt: '#475569', shirtHi: '#64748B', shirtSh: '#334155' },
-    pose: poseStand(lt, { lean: 0.06 })
+    pose: poseStand(lt, { lean: 0.06, arms: [{ a: 1.15, b: 0.42 }, { a: -0.18, b: 0.2 }] }),
+    flashlight: true
   });
-  vignette(c, 0.76, 0.42, '#090D16');
+  vignette(c, 0.72, 0.44, '#090D16');
 };
 
-// Example C: Macro First-Person POV (`hand()` 400px + synchronized `ctx.clip()`)
-VIEWS.macro_notebook_calc = function (c, lt, s) {
+// Example C: Macro First-Person POV (Physical object inspection via `hand()` + synchronized `ctx.clip()`)
+VIEWS.macro_bloodstained_ticket = function (c, lt, s) {
   const desk = c.createLinearGradient(0, 0, 0, H);
-  desk.addColorStop(0, '#3B281B'); desk.addColorStop(1, '#261810');
+  desk.addColorStop(0, '#1E293B'); desk.addColorStop(1, '#0F172A');
   c.fillStyle = desk; c.fillRect(0, 0, W, H);
-  glow(c, 360, 260, 360, '#F59E0B', 0.22);
+  glow(c, 520, 320, 420, '#FEF08A', 0.16);
 
-  // Open logbook on left half (kept crisp via NO_BLUR_VIEWS)
-  c.fillStyle = '#F5EFE6'; rr(c, 90, 140, 460, 420, 12); c.fill();
-  c.strokeStyle = '#CBD5E1'; c.lineWidth = 1.5;
-  for (let y = 200; y <= 500; y += 36) {
-    c.beginPath(); c.moveTo(120, y); c.lineTo(520, y); c.stroke();
-  }
+  // Physical old subway paper slip lying on steel desk under dim beam
+  c.save(); c.translate(420, 220); c.rotate(-0.08);
+  c.fillStyle = '#E7E0D3'; rr(c, 0, 0, 440, 230, 8); c.fill();
+  c.fillStyle = '#B91C1C'; c.fillRect(0, 0, 440, 26);
+  // Subtle crimson smear across ticket corner
+  c.fillStyle = 'rgba(153, 27, 27, 0.35)';
+  c.beginPath(); c.ellipse(355, 165, 58, 34, 0.3, 0, TAU); c.fill();
+  txt(c, 'EXPRESS PASS · B3', 28, 72, 22, '#334155', 700);
+  txt(c, '01:12 น.', 28, 162, 54, '#991B1B', 900);
+  c.restore();
 
-  // Synchronized ctx.clip() progressive reveal tied strictly to hand/marker position
-  const wr = prog(lt, 0.5, 3.2);
-  const penX = lerp(160, 430, clamp(wr));
-  if (wr > 0) {
-    c.save();
-    c.beginPath();
-    c.rect(120, 180, Math.max(0, penX - 120), 320);
-    c.clip();
-    txt(c, '17:00 x 7 = 02:02 น.', 135, 255, 28, '#1C1917', 700);
-    txt(c, 'EXIT WINDOW: 30s', 135, 325, 24, '#B91C1C', 700);
-    c.restore();
-  }
-
-  // 400px Macro POV forearm extending from bottom canvas edge
-  hand(c, penX + 45, 760 - clamp(wr) * 140, -0.35, 1.0, {
-    sleeve: true, sleeveColor: '#475569', marker: '#B91C1C', watch: '01:45'
+  // Flashlight sweep revealing the stamped time organically
+  const reveal = prog(lt, 0.3, 2.4);
+  const sweepX = lerp(420, 760, clamp(reveal));
+  hand(c, sweepX, 635 - clamp(reveal) * 95, -0.34, 1.0, {
+    sleeve: true, sleeveColor: '#334155', flashlight: true
   });
-  vignette(c, 0.65, 0.5);
+  vignette(c, 0.72, 0.45);
 };
 
 // Example D: Top-Down Tactical / Architectural Evasion View (`topDownRoom`)

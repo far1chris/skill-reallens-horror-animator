@@ -134,11 +134,37 @@
   const TOTAL = TL.total || 30;
   const SCENES = TL.scenes || [];
 
-  // Read HyperFrames composition variables if provided (--variables / Studio panel)
+  const rootEl = document.getElementById('root');
+
+  function setShortsMode(enabled) {
+    const on = Boolean(enabled);
+    window.SHORTS_MODE = on;
+    const cw = on ? 1080 : 1280;
+    const ch = on ? 1920 : 720;
+    cvs.width = cw;
+    cvs.height = ch;
+    cvs.style.width = cw + 'px';
+    cvs.style.height = ch + 'px';
+    if (rootEl) {
+      rootEl.style.width = cw + 'px';
+      rootEl.style.height = ch + 'px';
+    }
+    document.documentElement.style.width = cw + 'px';
+    document.documentElement.style.height = ch + 'px';
+    document.body.style.width = cw + 'px';
+    document.body.style.height = ch + 'px';
+  }
+  window.setShortsMode = setShortsMode;
+
+  // Read HyperFrames composition variables if provided (--variables / Studio panel) or ?shorts=1
+  if (/[?&]shorts=(?:1|true)/i.test(window.location.search)) {
+    window.SHORTS_MODE = true;
+  }
   if (window.__hyperframes && typeof window.__hyperframes.getVariables === 'function') {
     const vars = window.__hyperframes.getVariables() || {};
     if (typeof vars.shortsMode === 'boolean') window.SHORTS_MODE = vars.shortsMode;
   }
+  if (window.SHORTS_MODE) setShortsMode(true);
 
   function findScene(t) {
     if (SCENES.length === 0) return null;
@@ -154,23 +180,27 @@
     const s = findScene(t);
     if (!s) return;
     const lt = Math.max(0, t - s.start);
+    const cw = window.SHORTS_MODE ? 1080 : W;
+    const ch = window.SHORTS_MODE ? 1920 : H;
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, cw, ch);
 
     const viewMap = window.VIEWS || (typeof VIEWS !== 'undefined' ? VIEWS : {});
     const fn = viewMap[s.view] || viewMap[SCENES[0].view];
-    const activeCard = typeof normalizeCard === 'function' ? normalizeCard(s) : s.card;
+    const storyHudEnabled = Boolean(window.__ENABLE_STORY_HUD);
+    const activeCard = storyHudEnabled ? (typeof normalizeCard === 'function' ? normalizeCard(s) : s.card) : null;
     const noBlurViews = window.NO_BLUR_VIEWS || [];
 
     let rackBlur = 0;
-    if (activeCard && !noBlurViews.includes(s.view) && activeCard.type !== 'inventory') {
+    if (storyHudEnabled && activeCard && !noBlurViews.includes(s.view) && activeCard.type !== 'inventory') {
       const at = activeCard.at !== undefined ? activeCard.at : 0.4;
       const ca = prog(lt, at, at + 0.45) * (1 - 0.85 * prog(lt, s.dur - 0.32, s.dur));
       rackBlur = ca * (activeCard.type === 'flow' ? 5.5 : 3.5);
     }
 
+    const worldActive = typeof beginShortsWorld === 'function' ? beginShortsWorld(ctx, s) : false;
     if (fn) {
       if (rackBlur > 0.35) {
         blurLayer(ctx, rackBlur, (b) => fn(b, lt, s), `brightness(${(1 - rackBlur * 0.035).toFixed(2)})`);
@@ -178,22 +208,25 @@
         fn(ctx, lt, s);
       }
     }
+    if (typeof endShortsWorld === 'function') endShortsWorld(ctx, worldActive);
 
     const fadeIn  = prog(lt, 0, 0.14);
     const fadeOut = 1 - prog(lt, s.dur - 0.14, s.dur);
     const edgeFade = Math.min(fadeIn, fadeOut);
 
-    if (s.chapter) drawChapter(ctx, s.chapter, lt);
-    drawTele(ctx, s, lt);
-    if (activeCard) drawCard(ctx, activeCard, lt, s.dur);
+    if (!window.__HIDE_HUD) {
+      if (window.__ENABLE_STORY_TELE && typeof drawTele === 'function') drawTele(ctx, s, lt);
+      if (storyHudEnabled && activeCard && typeof drawCard === 'function') drawCard(ctx, activeCard, lt, s.dur);
+    }
     grain(ctx, t, 0.04);
 
     if (edgeFade < 1) {
       ctx.fillStyle = `rgba(10,14,22,${(1 - edgeFade) * 0.38})`;
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillRect(0, 0, cw, ch);
     }
 
-    drawSub(ctx, s, lt);
+    if (!window.__HIDE_HUD) drawSub(ctx, s, lt);
+    if (!window.__HIDE_HUD && typeof drawShortsEndingCTA === 'function') drawShortsEndingCTA(ctx, s, lt, t, TOTAL);
     ctx.restore();
   }
 

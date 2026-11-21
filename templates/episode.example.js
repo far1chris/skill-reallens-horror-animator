@@ -3,95 +3,99 @@
 //  Part of skill: reallens-horror-animator
 //  Copy to your project root as `episode.js` and replace with your story.
 //
+//  Shorts / Vertical Packaging Structure:
+//    - Event Cuts (45-60s/clip): Group scenes with `eventId` / `eventTitle` (or auto-sliced by shorts_planner.js)
+//    - Standalone (45-60s): Short `act: 1` story stands alone
+//    - 2-Part Max Cap: Never exceed 2 parts (`act: 1` + `act: 2`, with `isRecap: true` 3s recap on Part 2 opener)
+//
+//  Optional Top-Level & Scene Shorts Packaging Fields (NO leading "EP 1:", "เหตุการณ์ #1:", or pills/stamps):
+//    shortsTitle   : optional string or [titleTop, titleBot] — short 2-line punchy title
+//    shortsSubHook : optional string — concise teaser text inside the sharp red tag box directly below cover title
+//    titleRedLine  : optional 1 | 2 — which title line uses Red (#EF4444) vs White (#FFFFFF)
+//    eventId       : optional string/number — groups interesting scenes into standalone 45-60s event Shorts
+//    eventTitle    : optional string — short understandable title for that event cut
+//
+//  Clean Cinematic Horror Rules:
+//    - Pure story visuals + subtitles ONLY (ZERO infographic explainers / HUD boxes,
+//      ZERO top-right telemetry meters, and ZERO red "บทนำ · COLD OPEN" pill banners).
+//    - Never author `chapter`, `telemetry`, `hud`, or `card` inside story scenes.
+//
 //  Scene Fields:
 //    id            : unique string/number (used for audio cache & HyperFrames clips)
 //    view          : key in VIEWS[...] inside views.js
-//    act           : optional narrative act 1..N (shorts_planner.js keeps every EP <= 58s, auto-splitting into EP 6, 7, 8+)
+//    act           : optional narrative act (1 standalone 45-60s; max 2 acts total)
+//    isRecap       : true on the first scene of act: 2 so Part 2 opens immediately with a 3s recap (0.06s lead)
 //    vo            : Thai voiceover narration ("" for silent cliffhanger beat)
 //    pad           : trailing silence in seconds after VO finishes
 //    bed           : ambience bed key ('hum'|'dark'|'parking'|'wind'|'freeze'|'water'|'none')
-//    sfx           : [{ at: secFromSceneStart, type: 'ui_pop'|... }] (also supports {t, k})
-//    chapter       : optional [label, title] or { label, title }
-//    telemetry     : optional { day, time, status, label, kcal/kmax|tide|temp|oxygen|db|bar, distance, distLabel }
-//    hud / card    : optional rule | info | inventory | math/calc | dilemma/flow | anomaly/clue
+//    sfx           : [{ at: secFromSceneStart, type: 'door'|... }] (also supports {t, k})
 //    isClimax      : optional true — marks a peak key scene for Shorts covers & Showdown thumbnail
 //    coverAt       : optional seconds from scene start — exact timestamp for cover extraction
 //    coverScore    : optional priority number for key-scene ranking
-//    coverHeadline : optional [topLine, redWord] — custom 2-line Shorts cover hook
+//    coverHeadline : optional [titleTop, titleBot] — custom 2-line Shorts cover/overlay hook
 //    focusX        : optional 0..1280 X center for 5-panel vertical column crops
 // =============================================================================
 
-const TITLE = 'ตัวอย่าง: กฎกะดึกสถานีรถไฟใต้ดินสายสุดท้าย';
-const SUBTITLE = 'THE LAST SUBWAY SHIFT · ANALYTICAL SURVIVAL HORROR';
+const TITLE = 'เสียงเคาะกระจกตีหนึ่ง?! | กฎกะดึกสถานีสายสุดท้าย';
+const SUBTITLE = 'THE LAST SUBWAY SHIFT · SURVIVAL HORROR';
+
+const SHORTS_TITLE = ['เสียงเคาะกระจก', 'ตอนตีหนึ่ง!'];
+const SHORTS_SUB_HOOK = 'คำตอบหลอนกว่าที่คุณคิดเยอะ!';
+const TITLE_RED_LINE = 1;
 
 const SCENES = [
   {
-    id: '01_cold_open_platform',
+    id: '01_cold_open_anomaly_peak',
+    act: 1,
+    eventId: 'ev_window_knock',
+    eventTitle: 'เสียงเคาะกระจกตอนตีหนึ่ง!',
+    view: 'ots_entity_approach',
+    isClimax: true,
+    coverAt: 1.2,
+    coverHeadline: ['เสียงเคาะกระจก', 'ตอนตีหนึ่ง!'],
+    vo: 'ปัง ปัง ปัง เสียงเคาะกระจกดังขึ้นจากด้านนอกอุโมงค์ที่ไม่มีชานชาลา ทั้งที่รถไฟขบวนสุดท้ายเพิ่งออกไปเมื่อครึ่งชั่วโมงก่อน',
+    pad: 0.4,
+    bed: 'dark',
+    sfx: [{ at: 0.05, type: 'door' }, { at: 0.45, type: 'door' }, { at: 1.8, type: 'heartbeat' }]
+  },
+  {
+    id: '02_rewind_empty_platform',
     act: 1,
     view: 'platform_corridor',
-    vo: 'ถ้าคุณได้ยินเสียงประกาศขบวนรถไฟมาถึงหลังเที่ยงคืนครึ่ง ห้ามเงยหน้ามองกระจกประตูเด็ดขาด',
-    pad: 0.6,
-    bed: 'hum',
-    sfx: [{ at: 0.2, type: 'flicker' }, { at: 1.5, type: 'ui_pop' }],
-    chapter: ['องก์ที่ 1 · ACT I', 'กะดึกชานชาลา 00:30'],
-    telemetry: { day: 'กะดึก · สถานี B3', time: '00:30', status: 'WARN', db: 42, label: 'ขบวนสุดท้ายออกแล้ว' },
-    hud: {
-      type: 'rule', at: 1.5, pos: 'tl',
-      ruleNo: 'กฎข้อ 1',
-      title: 'หลัง 00:30 น. ห้ามมองเงาสะท้อนบนกระจกประตู',
-      sub: 'เพราะสิ่งที่ยืนอยู่นอกขบวน... ไม่ได้อยู่ในชานชาลาเดียวกัน',
-      eng: 'RULE 1 · NEVER LOOK AT GLASS REFLECTIONS AFTER 00:30'
-    }
-  },
-  {
-    id: '02_ots_approaching_entity',
-    act: 2,
-    view: 'ots_entity_approach',
-    vo: 'เสียงล้อรถเข็นโลหะค่อยๆ ขยับเข้ามาใกล้จากปลายอุโมงค์ ระยะห่างลดลงเหลือไม่ถึงสิบเมตร',
+    vo: 'ย้อนกลับไปตอนเที่ยงคืนครึ่ง ผมเพิ่งเดินลาดตระเวนกะดึกบนชานชาลาที่ว่างเปล่า และเห็นเงาใครบางคนยืนจ้องอยู่ที่อีกฝั่งของกระจก',
     pad: 0.5,
-    bed: 'dark',
-    sfx: [{ at: 0.4, type: 'squeak' }, { at: 2.2, type: 'heartbeat' }],
-    telemetry: {
-      day: 'กะดึก · สถานี B3', time: '01:12', status: 'CRITICAL',
-      db: 68, distance: '10 ม. ➔ 4 ม.', distLabel: 'ระยะห่าง'
-    }
+    bed: 'hum',
+    sfx: [{ at: 0.2, type: 'flicker' }, { at: 2.1, type: 'steps' }]
   },
   {
-    id: '03_macro_notebook_calc',
-    act: 3,
-    view: 'macro_notebook_calc',
-    vo: 'ผมก้มลงจดเวลาครบรอบลงในสมุดบันทึก ถ้าขบวนรถวนทุกสิบเจ็ดนาที ช่องทางหนีจะเปิดแค่สามสิบวินาทีเท่านั้น',
-    pad: 0.6,
+    id: '03_macro_bloodstained_ticket',
+    act: 1,
+    view: 'macro_bloodstained_ticket',
+    vo: 'ผมก้มลงหยิบตั๋วโดยสารเปื้อนคราบสีคล้ำที่ตกอยู่หน้าห้องควบคุม เวลาที่ประทับไว้บนตั๋วคือตีหนึ่งสิบสองนาที... ซึ่งเป็นเวลาในอีกห้านาทีข้างหน้า',
+    pad: 0.5,
     bed: 'interior_hush',
-    sfx: [{ at: 0.5, type: 'marker' }, { at: 2.0, type: 'ui_pop' }],
-    telemetry: { day: 'ห้องควบคุม', time: '01:45', status: 'WARN', db: 35, label: 'ประตูนิรภัย: ล็อก' },
-    hud: {
-      type: 'math', at: 1.8, pos: 'r',
-      badge: '● คำนวณรอบเวลา · EXIT WINDOW',
-      rows: [
-        ['รอบขบวนหลอนวนซ้ำ', 'ทุก 17 นาที'],
-        ['ช่วงเวลาไฟห้องควบคุมติด', '30 วินาที']
-      ],
-      total: ['หน้าต่างหลบหนีถัดไป', '02:02:00 น.'],
-      note: ['หากพลาดรอบนี้ ออกซิเจนจะหมดก่อน 03:00 น.']
-    }
+    sfx: [{ at: 0.5, type: 'marker' }, { at: 2.4, type: 'stinger' }]
   },
   {
-    id: '04_dilemma_choice',
-    act: 4,
+    id: '04_fire_door_twist',
+    act: 1,
     view: 'dilemma_booth',
-    vo: 'ไฟฉุกเฉินดับลงก่อนเวลาสองนาที ผมเหลือทางเลือกเดียวว่าจะรอในตู้หรือเดินฝ่าความมืดไปที่ประตูหนีไฟ',
+    vo: 'ไฟฉุกเฉินทั้งโถงดับวูบลง ผมรีบวิ่งฝ่าความมืดไปผลักประตูหนีไฟ แต่พอหันกลับมามอง... เสียงเคาะกระจกกลับดังขึ้นจากด้านหลังผมแทนครับ',
     pad: 0.8,
     bed: 'tense_pulse',
-    sfx: [{ at: 0.3, type: 'blackout' }, { at: 1.4, type: 'ui_pop' }],
-    telemetry: { day: 'โถงทางเดิน', time: '02:00', lights: false, db: 74, distance: '3 ม.' },
-    hud: {
-      type: 'dilemma', at: 1.4,
-      head: '02:00 น. · ไฟดับก่อนเวลา 2 นาที',
-      optA: { title: 'รอไฟติดในตู้', icon: '⏳', res: 'ขาดอากาศตาย', en: 'FATAL · OXYGEN DEPLETED' },
-      optB: { title: 'เดินฝ่าความมืดตามกฎ', icon: '🔦', res: 'ถึงทางออกทันเวลา', en: 'SAFE · REACH EXIT GATE' }
-    }
+    sfx: [{ at: 0.3, type: 'blackout' }, { at: 5.2, type: 'sting' }]
   }
 ];
 
-module.exports = { TITLE, SUBTITLE, SCENES };
+/* Optional 2-Part Template (ONLY if story cannot fit in 1 clip — MAX 2 EPs!):
+  {
+    id: '05_part2_recap_opener',
+    act: 2,
+    isRecap: true, // Forces COLD_OPEN_LEAD = 0.06s + subtitle at 0.00s
+    view: 'platform_corridor',
+    vo: 'ความเดิมจากตอนที่แล้ว หลังประตูหนีไฟปิดล็อกลง เงาปริศนาก็ก้าวเข้ามาชิดกระจกมากขึ้นเรื่อยๆ...',
+    ...
+  }
+*/
+
+module.exports = { TITLE, SUBTITLE, SHORTS_TITLE, SHORTS_SUB_HOOK, TITLE_RED_LINE, SCENES };

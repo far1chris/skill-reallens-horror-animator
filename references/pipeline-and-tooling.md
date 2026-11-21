@@ -20,9 +20,9 @@ Initialize a new episode directory from [`templates/`](../templates/) and [`scri
 | `hf.js` | [`scripts/hf.js`](../scripts/hf.js) | Cross-platform wrapper injecting `ffmpeg-static`, `ffprobe-static`, and local `node_modules/.bin` into `PATH`. |
 | `audit_all_scenes.js` | [`scripts/audit_all_scenes.js`](../scripts/audit_all_scenes.js) | Renders every scene (`1..N`) to `audit_all_scenes.png` and flags runtime/missing-view errors. |
 | `render_mp4.js` | [`scripts/render_mp4.js`](../scripts/render_mp4.js) | Alternative Puppeteer batch-12 `image2pipe` MP4 exporter (`--1080p` supported). |
-| `shorts_planner.js` | [`scripts/shorts_planner.js`](../scripts/shorts_planner.js) | Enforces `<= 58s` (`<= 60s`) vertical Shorts splitting (`EP 1..N`, auto `EP 6, 7, 8+`) and scores key climax scenes for covers/thumbnails. |
-| `render_all_shorts.js` | [`scripts/render_all_shorts.js`](../scripts/render_all_shorts.js) | Renders all planned `EP 1..N` `9:16` Shorts (`letterbox` / `1.35x zoom`, `30fps`, `48kHz`, `-14 LUFS`, `shorts/shorts_plan.json`). |
-| `inspect_video.js` | [`scripts/inspect_video.js`](../scripts/inspect_video.js) | 16-point automated QA scorecard + `5x5` contact sheet (`--shorts` verifies UI Safe Zone + `<= 60.0s` duration). |
+| `shorts_planner.js` | [`scripts/shorts_planner.js`](../scripts/shorts_planner.js) | Defaults to **1 standalone `45–60s` clip** (or **max 2 EPs** `ตอนที่ 1` + `ตอนจบ` with Part 2 3s recap, `--max-ep 2`) and scores climax frames for covers/thumbnails. |
+| `render_all_shorts.js` | [`scripts/render_all_shorts.js`](../scripts/render_all_shorts.js) | Renders standalone / <= 2-EP `9:16` Shorts (`fullscreen` default / `crop`, `30fps`, `48kHz`, `-14 LUFS`, `shorts/shorts_plan.json`). |
+| `inspect_video.js` | [`scripts/inspect_video.js`](../scripts/inspect_video.js) | 16-point automated QA scorecard + `5x5` contact sheet (`--shorts` verifies full-screen Safe Zone, `<= 60.0s`, and `<= 2 EP` + Part 2 3s recap). |
 
 ---
 
@@ -31,35 +31,40 @@ Initialize a new episode directory from [`templates/`](../templates/) and [`scri
 ```javascript
 {
   id: '01_cold_open',          // Unique string/number
-  act: 1,                      // Optional narrative act 1..N (auto-subdivided by shorts_planner.js if > 58s)
+  act: 1,                      // Optional narrative act 1..2 (or eventId for event cuts)
   view: 'platform_corridor',   // Key in window.VIEWS
-  vo: 'ถ้าคุณได้ยินเสียง...',     // Thai voiceover ("" for silent beat)
+  vo: 'ถ้าคุณได้ยินเสียง...',     // Thai voiceover ("" for silent beat; supports [[char:id|...]] / [[impersonate:desc|...]])
+  // Optional voice exceptions ONLY for other characters or narrator impersonations (narrator stays locked to Puck):
+  // role: 'narrator' | 'character' | 'impersonate',
+  // speaker: 'yai_nuan',      // Character ID from DEFAULT_CHARACTER_VOICES or episode.CHARACTER_VOICES
+  // impersonate: 'เสียงกระซิบ', // Vocal acting / preset ('sweet_sales'|'elder'|'deep'|'whisper_ghost'|'phone_speaker')
+  // voSegments: [{ role: 'narrator', text: '...' }, { role: 'character', speaker: 'yai_nuan', text: '...' }],
   pad: 0.6,                    // Silence (s) after VO finishes
   bed: 'hum',                  // 'hum'|'dark'|'parking'|'wind'|'freeze'|'water'|'none'
-  sfx: [{ at: 1.2, type: 'ui_pop' }],
-  chapter: ['องก์ที่ 1', 'ชื่อตอน'],
-  telemetry: { day: 'วันที่ 1', time: '00:30', status: 'WARN', db: 42, distance: '4 ม.' },
-  hud: { type: 'rule', at: 1.5, pos: 'tl', ruleNo: 'กฎข้อ 1', title: '...', sub: '...', eng: '...' },
-  // Optional key-scene hints for covers & thumbnails:
+  sfx: [{ at: 1.2, type: 'door' }],
+  // Optional key-scene hints for covers & thumbnails (NO chapter/telemetry/hud infographic overlays!):
   isClimax: false,             // true boosts scene priority for cover/showdown picks
   coverAt: 1.8,                // Exact seconds from scene start to capture hero frame
   coverScore: 95,              // Manual dramatic priority override
   coverHeadline: ['หัวข้อด้านบน', 'คำแดง!'],
-  focusX: 640                  // Horizontal subject center (0..1280) for 5-panel crops
+  focusX: 640                  // Horizontal subject center (0..1280) for 5-panel & Shorts crops
 }
 ```
 `generate_audio.js` produces `timeline.json` and `timeline.js` (`window.TIMELINE`), appending `start`, `dur`, `voStart`, `voDur`, and `subs: [{ t0, t1, text }]` to each scene.
 
 ---
 
-## 3. Unified Voiceover & Sound Design (`gemini-3.8-flash-tts` First Priority)
+## 3. Strict Narrator Vocal Lock & Sound Design (`gemini-3.8-flash-tts` First Priority)
 
 ### 3.1 Critical TTS Rules
-1. **Model Priority Order (Voice `Puck`):**
+1. **Model Priority Order (Locked per Episode via `lockedModelId`):**
    - `gemini-3.8-flash-tts` *(1st priority — `/v1beta/interactions` with `speech_metadata`)*
    - `gemini-3.8-flash-lite-tts` *(2nd priority — `/v1beta/interactions` with `speech_metadata`)*
    - `gemini-3.1-flash-tts-preview` *(3rd priority — **MUST omit** `annotations` / `speech_metadata` or API returns `HTTP 400`)*
-2. **NEVER Mix TTS Engines Mid-Video:** Keep all scenes `01..N` on Gemini `Puck`.
+2. **Strict Narrator Lock vs. Character / Impersonation Exceptions:**
+   - **Narrator Lines (`role: 'narrator'` default):** Always locked to `VOICE_NAME = 'Puck'` + `NARRATOR_STYLE` (`UNIFIED_STYLE`), phonetic/number normalized (`normalizeThaiForTTS` + `sanitizeVoForTTS`), and normalized with Two-Pass Linear EBU R128 (`I=-18.0`, `LRA=3.5`) + `dynaudnorm` so the narrator sounds like one consistent speaker across all scenes. Never override `voice` on narrator lines.
+   - **Other Characters & Impersonations:** Exceptions apply **only** for distinct speaking characters (`role: 'character'` / `speaker` + `episode.CHARACTER_VOICES`) or narrator voice impressions (`role: 'impersonate'` / `impersonate` / `voicePreset`), including mixed scenes via `voSegments`, inline `[[char:id|...]]` / `[[impersonate:desc|...]]`, or speech-verb quotes (`พูดว่า "..."`). Subtitles strip markup automatically via `stripVoMarkupForSubs()`.
+   - **AI Pronunciation & Clarity Detection:** `generate_audio.js` checks every clip via `inspectVoClipClarity` (and optional `--verify-asr` Gemini `2.5-flash` transcription match), auto-retries unclear fresh takes (or cached takes with `--fix-unclear` / `--repronounce`), writes `audio/pronunciation_report.json` (also supports `node generate_audio.js --audit-only`), and supports custom `episode.PRONUNCIATION_MAP` / `scene.ttsVo` phonetic overrides.
 3. **API Keys via Environment / `.env` (Never Hardcode Keys):**
    - Set `GEMINI_API_KEY` or comma-separated multi-project `GEMINI_API_KEYS` (Free Tier `10 RPD` / `3 RPM` is scoped per Google Cloud Project — multiple keys in the *same* project share quota; create keys across separate projects for 25+ scenes):
    - Windows PowerShell: `$env:GEMINI_API_KEYS = "key1,key2,key3"` (or place `GEMINI_API_KEYS=...` in project `.env`, ignored by `.gitignore`).
@@ -115,7 +120,7 @@ node hf.js render -f 24 -q looks --resolution 1440p -o master_1440p.mp4 # 2x int
 | Render Target | Resolution | FPS | EBU R128 Loudness | Export Command |
 | :--- | :--- | :--- | :--- | :--- |
 | **Master 16:9** | `1280x720` / `2560x1440` (`2x` DPR) / `1920x1080` | `24` or `30 fps` | `-18.0 LUFS`, `TP <= -1.5 dBTP` | `node hf.js render -f 24 -q looks -o master_hf.mp4` or `node render_mp4.js --1080p` |
-| **Shorts 9:16** | `1080x1920`, `<= 60.0s` / EP (`maxSec = 58s`, auto `EP 6, 7, 8+`) | `30 fps` | `-14.0 LUFS` (or `-18.0 LUFS` via `--lufs -18`) | `node render_all_shorts.js --mode letterbox` (or `--mode zoom`) |
+| **Shorts 9:16** | `1080x1920`, Standalone `45–60s` (or max `2 EPs`, `<= 58s` / EP) | `30 fps` | `-14.0 LUFS` (or `-18.0 LUFS` via `--lufs -18`) | `node render_all_shorts.js` (`--mode fullscreen` default) |
 
 Run [`scripts/inspect_video.js`](../scripts/inspect_video.js) after rendering to confirm **`16/16 PASS`**, **`0 Unintended Black Intervals`**, and **`<= 60.0s` per Vertical Short**:
 ```bash

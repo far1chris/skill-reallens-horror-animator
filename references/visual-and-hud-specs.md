@@ -33,43 +33,14 @@ This reference defines the exact color tokens, typography, HUD card blueprints, 
 
 ---
 
-## 3. Signature HUD Card Archetypes (Canvas Blueprints)
+## 3. Clean Cinematic Story Output (HUD Cards, Telemetry & Red Chapter Pills Disabled)
 
-Whenever a HUD card enters the frame (`normalizeCard()` supports both `s.card` and `s.hud` schemas):
-- **Camera Rack-Focus:** `index.html` blurs background views (`blurLayer`) unless `s.view` is listed in `window.NO_BLUR_VIEWS` or `card.type === 'inventory'`.
-- **Card Entrance:** `easeBack` pop-scale from `0.92` to `1.0` with automatic Thai width/font fitting (`fitTextSize`) so long Thai lines or tone marks never overflow (`badge` height `26px`, card padding `26px`).
+For **clean cinematic horror storytelling** without infographic lecture clutter:
+- **`drawChapter(c, chap, lt)` — PERMANENTLY DISABLED:** Red pill chapter banners such as `บทนำ · COLD OPEN` or `องก์ที่ ...` are removed (`return;`). Do NOT add `chapter:` in `episode.js`.
+- **`drawTele(c, s, lt)` & `drawCard` / `drawFlow` — DISABLED BY DEFAULT (`window.__ENABLE_STORY_TELE = false`, `window.__ENABLE_STORY_HUD = false`):** Top-right dark telemetry boxes (`● คืนฝนพรำ ... / ระดับเสียง / ระยะห่าง`), cream info/medical/anthropology explainer cards (`● ถอดรหัส...`), math tables, rule boxes, and dilemma flowcharts NEVER render over story scenes.
+- **No Infographic Explainer Diagrams in `views.js`:** Never draw bulleted summary panels, PowerPoint slide layouts, biological/medical chart breakdowns, or marker-pointing lecture boards inside `views.js` — let the 2.5D visual scene and frameless subtitles (`drawSub()`) carry 100% of the story cleanly.
 
-### Archetype 1: Survival Rule Card (`⚠ กฎข้อ 1` – `กฎข้อ N`)
-- **Fields:** `{ type: 'rule', at, pos: 'tl', ruleNo: 'กฎข้อ 1', title: [line1, line2], eng: 'RULE 1 · ...' }`
-- Line 1 renders in `#1C1917` (Ink), Line 2 renders in `#B91C1C` (Danger Red), separated from the English sub-caption by a `#CFC6B6` rule line.
-
-### Archetype 2: Theme-Agnostic Live Telemetry & Distance Pill (Top-Right)
-- **Fields (`s.telemetry` or `s.tele`):**
-  - Header: `day` (e.g. `'วันที่ 3 · ห้องควบคุม'` or `0` for baseline), `time` (`'03:00'`), `status` (`'SAFE' | 'WARN' | 'DANGER' | 'CRITICAL'`) or `lights: false`.
-  - **Flexible Meter Bar (auto-detected by `drawTele`):**
-    - Theme A Energy: `{ kcal: 90, kmax: 2400 }`
-    - Theme B Freeze / Oxygen: `{ temp: 35.4 }` or `{ oxygen: 28 }`
-    - Theme C Stealth / Sound: `{ db: 68 }`
-    - Maritime / Flood: `{ tide: -4.8 }`
-    - Custom Metric: `{ bar: { label: 'แบตเตอรี่', value: 18, max: 100, unit: '%', color: '#EF4444', warn: true } }`
-  - **Proximity Pill:** `distance: '4 ม.'` or `dist: [40, 2]` (animated countdown) + optional `distLabel: 'ระยะห่าง'`.
-
-### Archetype 3: Inventory Audit Card (`● ของที่มี · INVENTORY`)
-- **Fields:** `{ type: 'inventory', at, pos: 'tr', items: [{ icon: '🔦', name: '...', qty: '1 ชิ้น' }, ...] }` (staggered item reveal).
-
-### Archetype 4: Cursed Item / Anomaly Comparison Cards
-- Drawn directly in `views.js` for story-specific inspection beats (e.g., 3 food items with calendar paradoxes, thermometer readings, or analog logbook entries), paired with a Rule or Anomaly card (`type: 'anomaly'`, `glyph: '🔎'`).
-
-### Archetype 5: Calculated Survival Math Card (`type: 'math'` / `'calc'`)
-- **Fields:** `{ type: 'math', at, pos: 'r', badge: '● คำนวณ...', rows: [[label, val], ...], total: [label, val], note: [...] }`
-- Place left-side diagrams in `window.NO_BLUR_VIEWS` so `rackBlur` does not obscure the graphic behind the card.
-
-### Archetype 6: Branching Decision / Dilemma Flowchart (`type: 'dilemma'` / `'flow'`)
-- **Fields:** `{ type: 'dilemma', at, head: '...', optA: { title, icon, res, en, danger: true }, optB: { title, icon, res, en, danger: false } }`
-- Centered at `cx = 480` so the top-right Telemetry box stays unobstructed.
-
-### Archetype 7: Chapter Title Banner (`s.chapter`)
-- **Fields:** `['องก์ที่ 1 · ACT I', 'ชื่อตอน...']` or `{ label, title }`.
+*(Helper utilities `cardBox()` / `badge()` remain defined only if custom external thumbnail scripts use them; do NOT render in-story HUD/Telemetry banners.)*
 
 ---
 
@@ -77,7 +48,7 @@ Whenever a HUD card enters the frame (`normalizeCard()` supports both `s.card` a
 
 See [`templates/core.js`](../templates/core.js) for the full production implementation:
 
-1. **2-Segment FK Poses:** `poseWalk(t, speed, amp)` (with `Math.max(0, ...)` clamped knees), `poseStand(t, o)`, `poseKneel(t, o)`, `poseSit(t, o)`, `poseClimb(t, speed)`.
+1. **2-Segment FK Poses:** `poseWalk(t, speed, amp)` (with `Math.max(0, ...)` clamped knees), `poseStand(t, o)`, `poseKneel(t, o)`, `poseSit(t, o)` (natural 90°–110° chair `L`-sit `b <= a`, `{ curb: true }` for low ledges, always paired with a drawn seat/ledge under `hipY`), `poseSquat(t, o)`, `poseClimb(t, speed)`.
 2. **Protagonist Rig (`drawPerson(c, x, y, s, o)`):**
    - `1:6.5` ratio (`hipY = -92 + by`, `torsoH = 64`, legs `45 + 45`, arms `32 + 30`), continuous trapezius collar slope, capsule head (`52x62`), symmetrical `[-10, 10]` eyes with `1px` catchlight, periodic blinking, under-eye fatigue bags.
    - Options: `colors` (`{ shirt, shirtHi, shirtSh, pants, pantsSh }` — customize per story protagonist!), `thin`, `dir`, `back`, `profile`, `expr` (`'neutral' | 'focus' | 'fear' | 'shock' | 'squint' | 'tired' | 'relief'`), `sweat`, `coldBreath` (Theme B), `shiver` (Theme B), `coverMouth` (Theme C), `tapeArm`, `bag`, `milk`, `flashlight`.

@@ -38,12 +38,18 @@ Because Phases 1 → 2 → 3 → 4 → 5 have strict data dependencies (`episode
     │    [Visual QA] Phase 4: Inspect code guardrails + audit_all_scenes.png (PASS / FAIL ticket)
     │         │  (if FAIL -> View Artist fixes listed views -> re-audit, max 2 loops)
     │         ▼
-    └──► [Director] Phase 5–6: Render master_hf.mp4, thumbnails, shorts_planner, overlays, shorts, covers
-              │
-              ├── (Parallel) [Packaging & SEO Writer] Draft Long-Form + EP 1..N Shorts SEO from timeline.json + shorts_plan.json
+    └──► [Director] Phase 5: Render master_hf.mp4 + 16:9 thumbnails + inspect_video.js master_hf.mp4 --strict
               │
               ▼
-         [Visual QA] Phase 6–7: Inspect thumbnails + covers + overlays via read_file & verify inspect_video.js --strict (16/16 PASS, <= 60s)
+         ⏸️ [USER REVIEW GATE] ส่งคลิปยาว master_hf.mp4 ให้ผู้ใช้ตรวจและอนุมัติก่อน
+              │  (หยุดรอที่นี่ — ห้ามทำ Shorts จนกว่าผู้ใช้จะสั่งให้ทำคลิปสั้นต่อ!)
+              ▼
+         [Director] Phase 6: Run shorts_planner, overlays, render_all_shorts.js, generate_scene_covers.js
+              │
+              ├── (Parallel) [Packaging & SEO Writer] Draft Long-Form + Shorts SEO from timeline.json + shorts_plan.json
+              │
+              ▼
+         [Visual QA] Phase 6–7: Inspect covers + overlays via read_file & verify inspect_video.js --shorts --strict (16/16 PASS, <= 60s)
 ```
 
 ---
@@ -63,10 +69,10 @@ Read first:
 3. <EPISODE_DIR>/episode.js
 
 Task:
-Implement `<EPISODE_DIR>/views.js` defining `window.VIEWS` for every unique `scene.view` in `episode.js`, plus `window.NO_BLUR_VIEWS` for diagram/chart/left-graphic views paired with right-side HUD cards.
+Implement `<EPISODE_DIR>/views.js` defining `window.VIEWS` for every unique `scene.view` in `episode.js`, with clean `window.NO_BLUR_VIEWS = []`.
 
 Mandatory Guardrails:
-- GOLDEN RULE (STORY & CAMERA IDENTITY): Design a bespoke visual grammar for THIS story. NEVER copy mall props (shutters, mall tiles, fitting rooms, C-13, arm tape, 31 Feb bread, janitor mop) into non-mall stories, and NEVER copy fixed character coordinates `(x, y, scale)` from `views.example.js`.
+- GOLDEN RULE (CLEAN CINEMATIC STORYTELLING): Tell 100% of the horror story through environmental scenes, lighting, camera composition, and character acting. **STRICTLY PROHIBITED inside `views.js`:** infographic explanation slides, bulleted lecture panels (`1..2..3`), chalkboard/slide summary diagrams (e.g., medical/anthropology breakdown cards), or markers pointing at text charts! NEVER copy mall props (shutters, mall tiles, fitting rooms, C-13, arm tape, 31 Feb bread, janitor mop) into non-mall stories, and NEVER copy fixed character coordinates `(x, y, scale)` from `views.example.js`.
 - Custom Protagonist & Threat Look: Pass a story-appropriate outfit palette via `colors: { shirt, shirtHi, shirtSh, pants, pantsSh }` to `drawPerson()`, and customize `drawEntity()` (`suit`, `cap`, `prop`, `eyeColor`) to match this story's specific antagonist/hazard.
 - Varied Spatial Stage Builders: Mix `outdoorStage()`, `roomCorner()`, `topDownRoom()`, `cctvOverlay()`, `corridor()` (with varied `vx`, `vy`, `camH`), Macro POV `hand()` (400px + `ctx.clip()`), and Split-Screen views — never repeat the same camera angle or `(x, y)` staging for > 2 consecutive scenes.
 - Canonical signatures: `prog(t, startA, endB)` (NOT duration), `txt(c, s, x, y, numericSize, ...)` (NOT CSS font strings).
@@ -97,14 +103,16 @@ Read/Inspect:
    - `node inspect_video.js shorts/<ep>.mp4 --shorts --strict` (Phase 7, every EP <= 60.0s)
 
 Audit Checklist:
+- [ ] `episode.js` (`SCENES[0]`) opens within 0–3s at the peak anomaly/twist (`isClimax: true` or acute trigger) before rewinding to backstory (no slow chronological intro)
 - [ ] Zero `#000000` background fills or `blackdetect` failures
 - [ ] Correct `prog(t, a, b)` and numeric `txt()` signatures in `views.js`
-- [ ] Left-side diagrams included in `window.NO_BLUR_VIEWS`
+- [ ] **Clean Story Visuals (ZERO Infographics / Telemetry / Red Chapter Pills):** Zero infographic explanation slides or bulleted diagram boards inside `views.js`, zero Telemetry HUD boxes (`drawTele`), zero Rule/Info/Math/Dilemma HUD cards (`drawCard`/`drawFlow`) in-scene, and zero red `บทนำ · COLD OPEN` / `องก์ที่ ...` pill banners (`drawChapter`)
 - [ ] Zero mall-prop contamination in non-mall stories (Golden Rule) and zero default janitor mop/cap on non-janitor entities
 - [ ] Bespoke camera staging across scenes (no monotonous 3+ consecutive `corridor()` or identical `(x, y)` character placement)
 - [ ] Zero distorted faces, inverted knees, or short floating POV arms (`hand()` must be 400px off-edge)
-- [ ] `overlay_epX.png`: ONLY Title + Single Red EP Pill at top (NO yellow category header, NO 2nd status pill, NO bottom rule card)
-- [ ] `cover_shorts_ep*.png`: Top Headline + Center Climax Frame + Bottom EP Stamp ONLY (NO speech bubbles or bottom text boxes)
+- [ ] `overlay_*.png`: Transparent top scrim + 2-Line Two-Tone Stroked Title (`#EF4444` / `#FFFFFF`) only (NO red/orange pill/box bar below headline, NO leading `EP` / `เหตุการณ์ #` / `จบในคลิป:`, NO black letterbox bars, NO yellow category header, NO bottom rule card)
+- [ ] `cover_*.png` / `cover_shorts*.png`: Full-Bleed Scene Art + Top 2-Line Two-Tone Title + Fitted Rectangular Red Sub-Hook Box (`subHook` spaced cleanly below Line 2) (**STRICTLY NO viewfinder borders or red/yellow corner brackets**, NO top-right Telemetry HUD box, NO bottom stamp `เหตุการณ์ #1–#5`/`EP 1`/`จบใน 1 คลิป`, NO bottom yellow-red bar)
+- [ ] Shorts structure strictly **45–60s event cuts** (`isEvent: true`, coherent setup + climax per event) OR **1 standalone `45–60s` clip** OR **max 2 parts** (`act: 2` opens with 3s recap `isRecap: true`); titles lead directly with short understandable event/clip titles following `[Short Hook <= 38 chars] | [Series]` (ZERO leading `EP` / `เหตุการณ์ #`)
 - [ ] `16/16 PASS` and every Short `<= 60.0s`
 
 Output Format:
@@ -126,9 +134,9 @@ Read:
 
 Task:
 Write `<EPISODE_DIR>/seo_package.md` containing:
-1. 3 High-CTR Long-Form YouTube Titles (60–90 chars)
-2. Structured Long-Form Description using exact act timestamps from `timeline.json` (without spoiling the final twist) + Rules summary + 10–15 Tags + Pinned Comment
-3. Shorts / TikTok / Reels Titles (50–75 chars) + 5-Part Suspense Captions & Hashtags covering **every single planned episode (`EP 1` .. `EP N`)** matching `shorts/shorts_plan.json`.
+1. 3 High-CTR Long-Form YouTube Titles following `[Question or Suspense Hook <= 45 chars] | [Exact Series Name]` (core meaning completed within the first 45 characters, exact same series name strictly after `|`)
+2. Structured Long-Form Description using exact act timestamps from `timeline.json` (starting with `00:00 วินาทีพีค: จุดผิดปกติแรก (3 วินาทีแรก)` without spoiling the final twist) + Rules summary + 10–15 Tags + Pinned Comment
+3. Shorts / TikTok / Reels Titles leading directly with short understandable event/clip titles (NEVER leading with `EP X:`, `เหตุการณ์ #X:`, or `จบในคลิป:`) following `[Short Event Hook <= 38 chars] | [Series Name]` (for 45-60s event cuts or 1-clip default) or Part 1 + `[Payoff Hook <= 32 chars] (ตอนจบ) | [Series Name]` (max 2 parts) + 5-Part Suspense Captions & Hashtags matching `shorts/shorts_plan.json`.
 ```
 
 ---
