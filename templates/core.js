@@ -195,33 +195,64 @@ function poseStand(t, o = {}) {
     tilt: o.tilt || 0
   };
 }
+function clampSitArms(arms, defArms, raw = false) {
+  if (!arms) return defArms;
+  if (raw) return arms;
+  return arms.map((A, i) => {
+    const d = defArms[i] || defArms[0];
+    if (!A || typeof A.a !== 'number') return d;
+    let a = A.a, b = typeof A.b === 'number' ? A.b : d.b;
+    if (a > 0.62) a = 0.28 + Math.min(0.34, (a - 0.62) * 0.32);
+    if (a + b > 1.36) b = Math.max(0.25, 1.32 - a);
+    if (a + b < 0.45) b = 0.55 - a;
+    return { a, b };
+  });
+}
 function poseKneel(t, o = {}) {
+  const defArms = [{ a: 0.36, b: 0.76 }, { a: 0.24, b: 0.72 }];
   return {
-    by: 37, lean: 0.35,
-    legs: [{ a: 1.4, b: 1.4 }, { a: 0.1, b: 1.6 }],
-    arms: o.arms || [{ a: 1.2, b: -0.3 }, { a: 0.9, b: -0.2 }],
-    tilt: o.tilt || 0.2
+    by: o.by !== undefined ? o.by : 58,
+    lean: o.lean !== undefined ? o.lean : 0.16,
+    legs: o.legs || [{ a: 1.78, b: 1.56 }, { a: 0.72, b: 2.24 }],
+    arms: clampSitArms(o.arms, defArms, o.rawArms),
+    tilt: o.tilt !== undefined ? o.tilt : 0.08
+  };
+}
+function poseFloorSit(t, o = {}) {
+  const breathe = Math.sin(t * 2.0) * 0.012;
+  const defArms = [{ a: 0.28, b: 0.78 }, { a: 0.20, b: 0.74 }];
+  return {
+    by: o.by !== undefined ? o.by : 72,
+    lean: (o.lean !== undefined ? o.lean : 0.06) + breathe,
+    legs: o.legs || [{ a: 1.32, b: 2.72 }, { a: 1.22, b: 2.66 }],
+    arms: clampSitArms(o.arms, defArms, o.rawArms),
+    tilt: o.tilt || 0
   };
 }
 function poseSit(t, o = {}) {
+  if (o.floor) return poseFloorSit(t, o);
   const isCurb = Boolean(o.curb || o.low);
   const breathe = Math.sin(t * 2.0) * 0.012;
+  const defArms = isCurb
+    ? [{ a: 0.32, b: 0.78 }, { a: 0.22, b: 0.74 }]
+    : [{ a: 0.26, b: 0.84 }, { a: 0.18, b: 0.80 }];
   return {
-    by: o.by !== undefined ? o.by : (isCurb ? 52 : 32),
+    by: o.by !== undefined ? o.by : (isCurb ? 54 : 34),
     lean: o.lean !== undefined ? o.lean : ((isCurb ? 0.08 : 0.02) + breathe),
     legs: o.legs || (isCurb
-      ? [{ a: 1.72, b: 1.56 }, { a: 1.62, b: 1.48 }]
-      : [{ a: 1.32, b: 1.24 }, { a: 1.24, b: 1.18 }]),
-    arms: o.arms || [{ a: 0.36, b: 1.02 }, { a: 0.28, b: 0.98 }],
+      ? [{ a: 1.72, b: 1.58 }, { a: 1.64, b: 1.50 }]
+      : [{ a: 1.38, b: 1.34 }, { a: 1.30, b: 1.26 }]),
+    arms: clampSitArms(o.arms, defArms, o.rawArms),
     tilt: o.tilt || 0
   };
 }
 function poseSquat(t, o = {}) {
+  const defArms = [{ a: 0.42, b: 0.68 }, { a: 0.32, b: 0.66 }];
   return {
-    by: o.by !== undefined ? o.by : 58,
-    lean: o.lean !== undefined ? o.lean : 0.22,
-    legs: o.legs || [{ a: 1.85, b: 2.01 }, { a: 1.74, b: 1.90 }],
-    arms: o.arms || [{ a: 0.55, b: 0.95 }, { a: 0.45, b: 0.90 }],
+    by: o.by !== undefined ? o.by : 64,
+    lean: o.lean !== undefined ? o.lean : 0.18,
+    legs: o.legs || [{ a: 2.02, b: 2.38 }, { a: 1.94, b: 2.30 }],
+    arms: clampSitArms(o.arms, defArms, o.rawArms),
     tilt: o.tilt || 0
   };
 }
@@ -281,6 +312,7 @@ function drawPerson(c, x, y, s, o = {}) {
   c.save(); c.translate(x + shiverX, y); const _rc = applyShortsRigComp(c); c.scale(s * (o.dir || 1), s);
   if (o.shadow !== false) { c.fillStyle = 'rgba(0,0,0,0.22)'; c.beginPath(); c.ellipse(0, 0, 34, 6, 0, 0, TAU); c.fill(); }
   const by = P.by || 0, hipY = -92 + by, torsoH = 64, lean = P.lean || 0;
+  const pivotHip = () => { if (lean) { c.translate(0, hipY); c.rotate(lean); c.translate(0, -hipY); } };
   const legPts = (hx, L) => {
     const kx = hx + 45 * Math.sin(L.a), ky = hipY + 45 * Math.cos(L.a);
     const sa = L.a - L.b, ax = kx + 45 * Math.sin(sa), ay = ky + 45 * Math.cos(sa);
@@ -288,9 +320,13 @@ function drawPerson(c, x, y, s, o = {}) {
   };
   const leg = (hx, L, col, sh) => {
     const { kx, ky, ax, ay } = legPts(hx, L);
-    limbContour2(c, hx, hipY, kx, ky, ax, ay, 16 * thin);
-    limb(c, hx, hipY, kx, ky, 16 * thin, col, sh, { contour: false });
-    limb(c, kx, ky, ax, ay, 14 * thin, col, sh, { contour: false });
+    if (!o.sinh) {
+      limbContour2(c, hx, hipY, kx, ky, ax, ay, 16 * thin);
+      limb(c, hx, hipY, kx, ky, 16 * thin, col, sh, { contour: false });
+      limb(c, kx, ky, ax, ay, 14 * thin, col, sh, { contour: false });
+    } else {
+      limb(c, lerp(kx, ax, 0.55), lerp(ky, ay, 0.55), ax, ay, 13 * thin, col, sh);
+    }
     c.fillStyle = K.shoe; rr(c, ax - 6, ay - 5, 22, 9, 4); c.fill();
   };
   const sh = (i) => [14 * thin * (i ? -1 : 1) * 0.3, -144 + by];
@@ -309,7 +345,7 @@ function drawPerson(c, x, y, s, o = {}) {
 
   // Back limbs & behind-shoulder long hair
   leg(-6, P.legs[1], o.sinh ? mix(K.skinSh, '#000000', 0.15) : mix(K.pants, '#000000', 0.25), null);
-  c.save(); c.rotate(lean);
+  c.save(); pivotHip();
   const backArm = arm(1, P.arms[1], mix(K.shirt, '#000000', 0.18));
   if (hairStyle === 'long' && !o.back) {
     const hairSway = Math.sin((o.t || 0) * 4.5) * 2.5;
@@ -327,7 +363,7 @@ function drawPerson(c, x, y, s, o = {}) {
   if (o.sinh) leg(6, P.legs[0], K.skin, K.skinSh);
 
   // Torso (with female cut, swollen belly, structured collar & fold accents)
-  c.save(); c.rotate(lean);
+  c.save(); pivotHip();
   const chestW = (isFem ? 38 : 44) * thin, chestX = -chestW / 2;
   const hipW = (isFem ? 44 : 42) * thin;
   c.fillStyle = cyl(c, chestX, chestW, K.shirt, K.shirtHi, K.shirtSh); rr(c, chestX, -152 + by, chestW, torsoH, 12); c.fill();
@@ -347,6 +383,7 @@ function drawPerson(c, x, y, s, o = {}) {
     c.beginPath(); c.arc(9 * thin, -108 + by, 16, 0.15 * Math.PI, 0.78 * Math.PI); c.stroke();
   }
   c.fillStyle = o.sinh ? (typeof o.sinh === 'string' ? o.sinh : (K.sinh || '#4A2525')) : K.pants;
+  c.beginPath(); c.arc(0, hipY, hipW * 0.44, 0, TAU); c.fill();
   rr(c, -hipW / 2, -98 + by, hipW, 14, 5); c.fill();
   if (o.sash) {
     const sashCol = typeof o.sash === 'string' ? o.sash : '#991B1B';
@@ -513,43 +550,64 @@ function drawPerson(c, x, y, s, o = {}) {
     const sinhCol = typeof o.sinh === 'string' ? o.sinh : (K.sinh || '#4A2525');
     const sinhSh = mix(sinhCol, '#000000', 0.34);
     const sinhHem = K.sinhHem || '#7F2E2E';
-    const wCx = -hipY * Math.sin(lean), wY = hipY * Math.cos(lean) - 6;
-    const wL = wCx - 20 * thin, wR = wCx + 20 * thin;
-    let bL, bR, bY, kBendX = null, kBendY = null;
-    if (by > 20) {
-      kBendX = Math.max(p0.kx, p1.kx, wR) + 12;
-      kBendY = Math.min(p0.ky, p1.ky) - 6;
+    const wL = -19 * thin, wR = 18 * thin, wY = hipY - 8;
+    let bL, bR, bY;
+    c.save();
+    c.beginPath();
+    if (by > 20 && by < 66) {
+      const kFrontX = Math.max(p0.kx, p1.kx) + 8;
+      const kTopY = Math.min(p0.ky, p1.ky) - 7;
       bY = Math.max(p0.ay, p1.ay) - 4;
-      bL = Math.min(wL - 4, p1.kx - 14);
-      bR = Math.max(p0.ax + 8, p0.kx * 0.8 + 6);
+      bR = Math.max(p0.ax, p1.ax, p0.kx) + 8;
+      bL = Math.max(wR - 4, Math.min(p0.ax, p1.ax) - 14);
+      const seatBotY = Math.min(bY - 10, hipY + 9);
+      c.moveTo(wL, wY);
+      c.lineTo(wR, wY);
+      c.quadraticCurveTo((wR + kFrontX) * 0.5, kTopY - 2, kFrontX, kTopY + 3);
+      c.lineTo(bR, bY);
+      c.lineTo(bL, bY);
+      c.lineTo(bL - 2, seatBotY);
+      c.quadraticCurveTo(wL - 2, seatBotY, wL - 2, hipY + 2);
+      c.closePath();
+    } else if (by >= 66) {
+      const kFrontX = Math.max(p0.kx, p1.kx) + 9;
+      const kTopY = Math.min(p0.ky, p1.ky) - 7;
+      bY = Math.max(p0.ay, p1.ay, hipY + 14) - 2;
+      bL = wL - 4;
+      bR = kFrontX + 2;
+      c.moveTo(wL, wY);
+      c.lineTo(wR, wY);
+      c.quadraticCurveTo((wR + kFrontX) * 0.5, kTopY - 2, kFrontX, kTopY + 4);
+      c.lineTo(bR, bY);
+      c.lineTo(bL, bY);
+      c.closePath();
     } else {
       bY = Math.min(-10, Math.max(p0.ay, p1.ay) - 10);
       bL = Math.min(wL - 3, p0.ax - 11, p1.ax - 11);
       bR = Math.max(wR + 3, p0.ax + 12, p1.ax + 12);
+      c.moveTo(wL, wY); c.lineTo(wR, wY); c.lineTo(bR, bY); c.lineTo(bL, bY);
+      c.closePath();
     }
     c.save();
-    c.beginPath();
-    c.moveTo(wL, wY); c.lineTo(wR, wY);
-    if (kBendX !== null) c.lineTo(kBendX, kBendY);
-    c.lineTo(bR, bY); c.lineTo(bL, bY);
-    c.closePath();
     c.clip();
-    c.fillStyle = cyl(c, bL, Math.max(30, bR - bL), sinhCol, mix(sinhCol, '#FFFFFF', 0.14), sinhSh);
-    c.fillRect(bL - 10, wY - 10, (bR - bL) + 60, (bY - wY) + 30);
-    // Horizontal woven bands + Isan Teen-Sinh border hem
+    const spanL = Math.min(wL - 6, bL - 6), spanW = Math.max(36, bR - spanL + 12);
+    c.fillStyle = cyl(c, spanL, spanW, sinhCol, mix(sinhCol, '#FFFFFF', 0.14), sinhSh);
+    c.fillRect(spanL - 10, Math.min(wY, hipY - 20) - 10, spanW + 40, (bY - Math.min(wY, hipY - 20)) + 30);
     c.strokeStyle = 'rgba(255,255,255,0.09)'; c.lineWidth = 2;
     for (let ry = wY + 14; ry < bY - 12; ry += 14) {
-      c.beginPath(); c.moveTo(bL - 10, ry); c.lineTo(bR + 40, ry); c.stroke();
+      c.beginPath(); c.moveTo(spanL - 10, ry); c.lineTo(bR + 30, ry); c.stroke();
     }
-    c.fillStyle = sinhHem; c.fillRect(bL - 10, bY - 11, (bR - bL) + 60, 14);
-    c.fillStyle = 'rgba(250, 204, 21, 0.25)'; c.fillRect(bL - 10, bY - 12, (bR - bL) + 60, 2.5);
+    c.fillStyle = sinhHem; c.fillRect(spanL - 10, bY - 11, spanW + 40, 14);
+    c.fillStyle = 'rgba(250, 204, 21, 0.25)'; c.fillRect(spanL - 10, bY - 12, spanW + 40, 2.5);
+    c.restore();
+    c.strokeStyle = 'rgba(8, 10, 16, 0.38)'; c.lineWidth = 1.6; c.stroke();
     c.restore();
   } else {
     leg(6, P.legs[0], K.pants, K.pantsSh);
   }
 
   // Front limb & Wrist-Socket Held Props (with thumb & curled finger grip)
-  c.save(); c.rotate(lean);
+  c.save(); pivotHip();
   let frontPose = o.coverMouth ? { a: 2.35, b: 1.05 } : P.arms[0];
   if (o.torch && !o.keepArmPose) {
     frontPose = { a: 0.74 + Math.sin((o.t || 0) * 5) * 0.06, b: 0.72 };

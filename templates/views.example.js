@@ -132,7 +132,7 @@ VIEWS.dilemma_booth = function (c, lt, s) {
   drawPerson(c, 1020, 620, 1.15, {
     t: lt, dir: -1, profile: true, expr: 'fear', sweat: true,
     colors: { shirt: '#475569', shirtHi: '#64748B', shirtSh: '#334155' },
-    pose: poseKneel(lt)
+    pose: poseSquat(lt)
   });
   emergency(c, 640, 220, 500, 0.22 + 0.12 * Math.sin(lt * 8));
   vignette(c, 0.78, 0.42);
