@@ -30,7 +30,10 @@ Before writing Phase 1 (`episode.js`), confirm with the user (or infer from thei
 4. **Gemini API Key(s):** Loaded via `.env` or environment variables (`GEMINI_API_KEYS` comma-separated or `GEMINI_API_KEY`)—**never hardcode API keys in source files**.
 
 ### Copy Starter Kit into Project Directory
-Copy all files from [`templates/`](./templates/) and [`scripts/`](./scripts/) into the new episode folder, then install dependencies:
+Copy files **ONLY** from [`templates/`](./templates/) and [`scripts/`](./scripts/) into the new episode folder, then install dependencies:
+
+> **⛔ Strict Context-Isolation Rule (Zero Cross-Episode File Reading):**
+> When creating a new episode, NEVER list contents inside, inspect, or `read_file` any previous episode folder on `D:\`, `C:\`, or `scratch\` (including `episode.js`, `views.js`, `packaging.json`, or `shorts_config.json` from past episodes—if needed to pick a unique folder slug, check directory names only). Reading old episode scripts/views contaminates the context window and causes the model to clone past story beats and camera staging instead of following the user's new prompt.
 
 ```powershell
 # PowerShell (Windows)
@@ -171,9 +174,9 @@ episode.js     generate_     views.js           node hf.js check       hf.js ren
 core.js        audio.js      sync_hyperframes   audit_all_scenes.png   master_hf.mp4 + 16:9 thumb  รอคำสั่งทำคลิปสั้น    render_all_shorts.js     --shorts --strict
 ```
 
-1. **Phase 1 — Script (`episode.js`):** Target **1 standalone `45–60s` complete story (`act: 1`)** or **max 2 acts (`act: 1` + `act: 2` with `isRecap: true` 3s recap in Part 2)**. `SCENES[0]` MUST open within `0–3s` directly at the peak anomaly/twist (`isClimax: true`); `TITLE` MUST follow `[ประโยคคำถาม/จุดระทึก <= 40 ตัวอักษร] | [ชื่อซีรีส์]`.
+1. **Phase 1 — Script (`episode.js`) & User Camera Prompt Lock:** Map every visual cue (`ภาพและฉาก:`) and camera direction (`มุมกล้อง:`) explicitly requested by the user **1:1 into `SCENES` first**, attaching a per-scene `cameraSpec: { pitch, horizonY, framing, move }` field (or comment). When expanding any Act into 4–6 sub-scenes to match VO duration, **every expanded sub-scene MUST stay inside the physical location and camera grammar the user specified for that Act** (vary shot scale, vertical pitch `horizonY`, and foreground occlusion inside that same world—NEVER pad sub-scenes with unrequested `roomCorner()`, `topDownRoom()`, red-line `W/2` splits, or marker-arrow boards). Target **1 standalone `45–60s` complete story (`act: 1`)** or **max 2 acts (`act: 1` + `act: 2` with `isRecap: true` 3s recap in Part 2)**. `SCENES[0]` MUST open within `0–3s` directly at the peak anomaly/twist (`isClimax: true`); `TITLE` MUST follow `[ประโยคคำถาม/จุดระทึก <= 40 ตัวอักษร] | [ชื่อซีรีส์]`.
 2. **Phase 2 — Audio (`node generate_audio.js`):** Synthesize `Puck` voiceover (`gemini-3.8-flash-tts` first), `-18 LUFS` master, `timeline.json` & `timeline.js`.
-3. **Phase 3 — Views & Sync (`views.js`, `node sync_hyperframes.js`):** Implement story-native views, localize fonts & GSAP, sync `index.html`.
+3. **Phase 3 — Views & Sync (`views.js`, `node sync_hyperframes.js`):** Build each scene view directly from `scene.cameraSpec` and setting-native geometry (`cameraRig()`, varying `horizonY`, 3-plane foreground occlusion) instead of copying past templates, localize fonts & GSAP, sync `index.html`.
 4. **Phase 4 — Verification Gate:** Run `node hf.js lint` (`0 errors, 0 warnings`), `node hf.js check`, `node hf.js snapshot --review`, and `node audit_all_scenes.js` $\rightarrow$ inspect `audit_all_scenes.png` visually via `read_file`. Optionally launch `node hf.js preview` for Studio timeline inspection.
 5. **Phase 5 — Long-Form Master Render & QA:** Run `node hf.js render -f 24 -q looks -o master_hf.mp4` (or `--resolution 1440p` / `node render_mp4.js --1080p`), `node generate_thumbnail.js` (16:9 thumbnails), and `node inspect_video.js master_hf.mp4 --strict` (`16/16 PASS`).
    - **⏸️ MANDATORY USER REVIEW GATE (ตรวจคลิปยาวก่อนทำคลิปสั้น):** หลังจากเรนเดอร์และตรวจ `master_hf.mp4` เสร็จแล้ว **ให้หยุดส่งคลิปยาว (และปก 16:9) ให้ผู้ใช้ตรวจสอบและอนุมัติก่อนเสมอ ห้ามรัน `generate_shorts_overlays.js`, `render_all_shorts.js`, หรือ `generate_scene_covers.js` อัตโนมัติจนกว่าผู้ใช้จะสั่งให้ทำคลิปสั้นต่อ** *(ยกเว้นกรณีผู้ใช้สั่งทำเฉพาะคลิปสั้นตั้งแต่ต้น)*
