@@ -74,7 +74,12 @@ description: >-
 2. **Phase 2 — Audio (`node generate_audio.js`):** สังเคราะห์เสียง `Puck` + 420ms tail pad + `shorts_bridge_cta.wav` (ถ้ามี) + `timeline.json`
 3. **Phase 3 — Views & Sync (`views.js`, `node sync_hyperframes.js`):** วาดฉากตาม `visual_prompt`/`camera_note` + สลับ `horizonY` (ใช้ `blurLayer(c, px, fn, '', 'cacheKey')` สำหรับฉากหลังนิ่งเพื่อลดภาระ 1080p) + ซิงก์ `index.html` (`1920x1080 @ 30fps`)
 4. **Phase 4 — Verification Gate:** `node hf.js lint` (`0 err/warn`), `node hf.js check`, `node audit_all_scenes.js` → ตรวจ `audit_all_scenes.png` ด้วย `read_file`
-5. **Phase 5 — Long-Form Native 1080p @ 30fps & Thumbnails:** `node hf.js render -f 30 -q looks --gpu --browser-gpu -o master_hf.mp4` *(หรือ `node render_mp4.js` ที่ใช้ NVENC GPU + parallel workers; โหมดร่างใช้ `-f 24 -q draft` หรือ `--720p`)*, `node generate_thumbnail.js --strict`, `node inspect_video.js master_hf.mp4 --strict` (`16/16 PASS`)
+5. **Phase 5 — Long-Form Native 1080p @ 30fps & Thumbnails (Hybrid HyperFrames + FFmpeg):**
+   - **Draft รวดเร็ว (`--720p --fps 24`):** `node render_mp4.js --720p --fps 24 -o draft_720p.mp4` (หรือ `hf.js preview` ลากดูไทม์ไลน์)
+   - **Fast Master 1080p @ 30fps (NVENC + ลด banding ฉากมืด):** `node render_mp4.js --grade horror --cq 17 -o master_hf.mp4`
+   - **HQ Master (PNG lossless pipe + NVENC `p6` `CQ 16` + Film Grade):** `node render_mp4.js --hq --grade horror -o master_hf.mp4`
+   - **HyperFrames Studio (`--start/--end`, `--resume`, `--format mov`, `--resolution 4k`):** `node hf.js render -f 30 -q looks --gpu --browser-gpu -o master_hf.mp4`
+   - แล้วรัน `node generate_thumbnail.js --strict` และ `node inspect_video.js master_hf.mp4 --strict` (`16/16 PASS`)
    - **⏸️ MANDATORY USER REVIEW GATE:** ส่งคลิปยาว + ปก 16:9 ให้ผู้ใช้ตรวจและอนุมัติก่อน **ห้ามรันสคริปต์ทำ Shorts อัตโนมัติจนกว่าผู้ใช้จะสั่งทำต่อ** *(ยกเว้นกรณีสั่งทำเฉพาะ Shorts ตั้งแต่ต้น)*
 6. **Phase 6 — Cliffhanger Shorts (หลังอนุมัติ):** `node shorts_planner.js --format cliffhanger`, `node generate_shorts_overlays.js --format cliffhanger`, `node render_all_shorts.js --format cliffhanger`, `node generate_scene_covers.js --format cliffhanger` → ตรวจปก/overlay ด้วย `read_file`
 7. **Phase 7 — Final Shorts QA:** `node inspect_video.js shorts/<clip>.mp4 --shorts --strict` (`16/16 PASS`, `<= 60.0s`)

@@ -11,7 +11,7 @@
 //    node hf.js snapshot --review
 //    node hf.js snapshot --at 5,60,180 --no-end
 //    node hf.js preview
-//    node hf.js render -f 24 -q looks -o master_hf.mp4
+//    node hf.js render -f 30 -q looks --gpu --browser-gpu -o master_hf.mp4
 // =============================================================================
 const fs = require('fs');
 const path = require('path');
@@ -25,12 +25,12 @@ try {
   reqs.unshift(createRequire(fs.existsSync(pkgJson) ? pkgJson : path.join(projectDir, '_resolver.js')));
 } catch (_) {}
 
-function resolveBinDir(pkgName, getter) {
+function resolveBinPath(pkgName, getter) {
   for (const r of reqs) {
     try {
       const mod = r(pkgName);
       const binPath = getter ? getter(mod) : mod;
-      if (binPath && fs.existsSync(binPath)) return path.dirname(binPath);
+      if (binPath && fs.existsSync(binPath)) return binPath;
     } catch (_) {}
   }
   return null;
@@ -40,13 +40,15 @@ const extraPaths = [];
 const localBinDir = path.join(projectDir, 'node_modules', '.bin');
 if (fs.existsSync(localBinDir)) extraPaths.push(localBinDir);
 
-const ffmpegDir = resolveBinDir('ffmpeg-static');
-if (ffmpegDir) extraPaths.push(ffmpegDir);
+const ffmpegBin = resolveBinPath('ffmpeg-static');
+if (ffmpegBin) extraPaths.push(path.dirname(ffmpegBin));
 
-const ffprobeDir = resolveBinDir('ffprobe-static', m => m && m.path);
-if (ffprobeDir) extraPaths.push(ffprobeDir);
+const ffprobeBin = resolveBinPath('ffprobe-static', m => m && m.path);
+if (ffprobeBin) extraPaths.push(path.dirname(ffprobeBin));
 
 const env = { ...process.env };
+if (ffmpegBin && !env.HYPERFRAMES_FFMPEG_PATH) env.HYPERFRAMES_FFMPEG_PATH = ffmpegBin;
+if (ffprobeBin && !env.HYPERFRAMES_FFPROBE_PATH) env.HYPERFRAMES_FFPROBE_PATH = ffprobeBin;
 const pathKey = Object.keys(env).find(k => k.toLowerCase() === 'path') || 'PATH';
 if (extraPaths.length > 0) {
   env[pathKey] = extraPaths.join(path.delimiter) + path.delimiter + (env[pathKey] || '');

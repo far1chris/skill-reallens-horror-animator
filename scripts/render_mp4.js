@@ -6,11 +6,13 @@
 //  Features:
 //   - Defaults to Native Canvas 1920x1080 @ 30fps (auto-reads #root data-width/height/fps)
 //   - Optional `--720p` (`--fps 24`) fast draft mode via runtime canvas scaling (zero blurry resize)
+//   - Optional `--hq` (lossless PNG pipe + CQ 16 + NVENC p6 + 256k AAC) or `--png` / `--cq N`
+//   - Optional `--grade horror|sitcom|auto|none` FFmpeg finishing filter (deband+grain / ink crispness)
 //   - Parallel Puppeteer worker pool (`--workers N`, default auto 2-4 tabs)
 //   - Chrome GPU Rasterization (`--no-gpu` to disable) + FFmpeg NVENC / AMF GPU auto-probe (`--cpu` to disable)
 //
 //  Usage:
-//    node render_mp4.js [--dir <projectDir>] [--out master_16x9.mp4] [--fps 30] [--workers 4] [--720p] [--1080p] [--cpu] [--no-gpu]
+//    node render_mp4.js [--dir <projectDir>] [--out master_hf.mp4] [--fps 30] [--workers 4] [--720p] [--1080p] [--hq] [--png] [--cq 17] [--grade none|horror|sitcom|auto] [--cpu] [--no-gpu]
 // =============================================================================
 const fs = require('fs');
 const os = require('os');
@@ -81,24 +83,68 @@ function readRootSpecs(htmlPath) {
   };
 }
 
-function probeVideoEncoder(ffmpegPath, forceCpu) {
+const GRADE_FILTERS = {
+  horror: 'format=yuv420p,deband=1thr=0.02:2thr=0.02:3thr=0.02:blur=1,noise=alls=3:allf=t+u',
+  sitcom: 'format=yuv420p,unsharp=3:3:0.35:3:3:0.0',
+  none: null
+};
+
+/**
+ * Resolve optional FFmpeg finishing filter preset (`none`, `horror`, `sitcom`, `auto`).
+ */
+function resolveGradeFilter(gradeArg, targetDir) {
+  let resolved = (gradeArg || 'none').toLowerCase();
+  if (resolved === 'auto') {
+    const snippets = [];
+    for (const rel of ['package.json', 'episode.js', 'timeline.json']) {
+      const p = path.join(targetDir, rel);
+      if (fs.existsSync(p)) {
+        try {
+          snippets.push(fs.readFileSync(p, 'utf8').slice(0, 4096));
+        } catch (_) {}
+      }
+    }
+    const combined = snippets.join('\n');
+    if (/reallens|documentary|HUD_MODE|NARRATIVE_MODE/i.test(combined)) resolved = 'horror';
+    else if (/sitcom|\bCAST\b/i.test(combined)) resolved = 'sitcom';
+    else resolved = 'none';
+  }
+  if (!(resolved in GRADE_FILTERS)) {
+    throw new Error(`Unsupported --grade "${gradeArg}". Valid values: none, horror, sitcom, auto.`);
+  }
+  return { name: resolved, filter: GRADE_FILTERS[resolved] };
+}
+
+/**
+ * Probe hardware/CPU H.264 encoder with dynamic CQ/CRF and HQ preset fallback.
+ */
+function probeVideoEncoder(ffmpegPath, forceCpu, { cq = 19, isHq = false } = {}) {
+  const cqStr = String(cq);
   if (!forceCpu) {
-    const gpuSpecs = [
+    const gpuSpecs = [];
+    if (isHq) {
+      gpuSpecs.push({
+        name: 'h264_nvenc',
+        label: 'h264_nvenc p6 HQ (NVIDIA GPU)',
+        args: ['-c:v', 'h264_nvenc', '-preset', 'p6', '-rc', 'vbr', '-cq', cqStr, '-b:v', '0', '-pix_fmt', 'yuv420p']
+      });
+    }
+    gpuSpecs.push(
       {
         name: 'h264_nvenc',
-        label: 'h264_nvenc (NVIDIA GPU)',
-        args: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '19', '-b:v', '0', '-pix_fmt', 'yuv420p']
+        label: isHq ? 'h264_nvenc p4 (NVIDIA GPU)' : 'h264_nvenc (NVIDIA GPU)',
+        args: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', cqStr, '-b:v', '0', '-pix_fmt', 'yuv420p']
       },
       {
         name: 'h264_amf',
         label: 'h264_amf (AMD GPU)',
-        args: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', '19', '-qp_p', '19', '-pix_fmt', 'yuv420p']
+        args: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', cqStr, '-qp_p', cqStr, '-pix_fmt', 'yuv420p']
       }
-    ];
+    );
     for (const spec of gpuSpecs) {
       const testRun = spawnSync(
         ffmpegPath,
-        ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.04', '-frames:v', '1', '-c:v', spec.name, '-f', 'null', '-'],
+        ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.04', '-frames:v', '1', ...spec.args, '-f', 'null', '-'],
         { encoding: 'utf8' }
       );
       if (testRun.status === 0) return spec;
@@ -106,8 +152,8 @@ function probeVideoEncoder(ffmpegPath, forceCpu) {
   }
   return {
     name: 'libx264',
-    label: 'libx264 (CPU)',
-    args: ['-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p']
+    label: isHq ? 'libx264 slow HQ (CPU)' : 'libx264 (CPU)',
+    args: ['-c:v', 'libx264', '-preset', isHq ? 'slow' : 'fast', '-crf', cqStr, '-pix_fmt', 'yuv420p']
   };
 }
 
@@ -163,6 +209,12 @@ async function launchBrowser(puppeteer, executablePath, disableGpu) {
   const WORKERS = Math.max(1, Math.min(8, parseInt(getArg('--workers') || String(defaultWorkers), 10)));
   const forceCpu = hasFlag('--cpu');
   const disableChromeGpu = hasFlag('--no-gpu');
+  const isHq = hasFlag('--hq');
+  const usePng = isHq || hasFlag('--png');
+  const cqRaw = getArg('--cq', '--crf');
+  const CQ = Math.max(12, Math.min(28, parseInt(cqRaw || (isHq ? '16' : '19'), 10) || (isHq ? 16 : 19)));
+  const gradeArg = (getArg('--grade') || 'none').toLowerCase();
+  const grade = resolveGradeFilter(gradeArg, projectDir);
 
   let defaultOut = 'master_16x9.mp4';
   const pkgPath = path.join(projectDir, 'package.json');
@@ -183,13 +235,16 @@ async function launchBrowser(puppeteer, executablePath, disableGpu) {
     process.exit(1);
   }
 
-  const encoder = probeVideoEncoder(ffmpegPath, forceCpu);
+  const encoder = probeVideoEncoder(ffmpegPath, forceCpu, { cq: CQ, isHq });
   const executablePath = findBrowserExecutable();
   const { browser, gpuEnabled } = await launchBrowser(puppeteer, executablePath, disableChromeGpu);
 
   console.log(`=== Rendering Native ${TARGET_W}x${TARGET_H} 16:9 MP4: ${path.basename(OUT_MP4)} ===`);
   console.log(
     `Duration: ${TOTAL_SEC.toFixed(2)}s | FPS: ${FPS} | Frames: ${TOTAL_FRAMES} | Encoder: ${encoder.label} | Chrome GPU: ${gpuEnabled ? 'ON' : 'CPU'} | Workers: ${WORKERS}`
+  );
+  console.log(
+    `Pipe: ${usePng ? 'PNG (lossless)' : 'JPEG (0.95)'} | CQ/CRF: ${CQ} | Grade: ${grade.name}`
   );
 
   const pages = [];
@@ -221,13 +276,14 @@ async function launchBrowser(puppeteer, executablePath, disableGpu) {
   const ffArgs = [
     '-y',
     '-f', 'image2pipe',
-    '-vcodec', 'mjpeg',
+    '-vcodec', usePng ? 'png' : 'mjpeg',
     '-r', String(FPS),
     '-i', '-',
     '-i', AUDIO_WAV,
+    ...(grade.filter ? ['-vf', grade.filter] : []),
     ...encoder.args,
     '-c:a', 'aac',
-    '-b:a', '192k',
+    '-b:a', isHq ? '256k' : '192k',
     '-shortest',
     '-movflags', '+faststart',
     OUT_MP4
@@ -239,9 +295,10 @@ async function launchBrowser(puppeteer, executablePath, disableGpu) {
     if (ffErrChunks.length < 40) ffErrChunks.push(d.toString());
   });
 
-  const CHUNK_PER_WORKER = 6;
+  const CHUNK_PER_WORKER = usePng ? 3 : 6;
   const SUPER_BATCH = WORKERS * CHUNK_PER_WORKER;
   const t0 = Date.now();
+  const frameMime = usePng ? 'image/png' : 'image/jpeg';
 
   for (let f = 0; f < TOTAL_FRAMES; f += SUPER_BATCH) {
     const batchEnd = Math.min(TOTAL_FRAMES, f + SUPER_BATCH);
@@ -256,13 +313,15 @@ async function launchBrowser(puppeteer, executablePath, disableGpu) {
         ts.push(k / FPS);
       }
       workerPromises.push(
-        pages[w].evaluate((times) => {
+        pages[w].evaluate((times, mime) => {
           const stage = document.getElementById('stage');
           return times.map(t => {
             window.renderAtTime(t);
-            return stage.toDataURL('image/jpeg', 0.95);
+            return mime === 'image/png'
+              ? stage.toDataURL('image/png')
+              : stage.toDataURL('image/jpeg', 0.95);
           });
-        }, ts)
+        }, ts, frameMime)
       );
     }
 

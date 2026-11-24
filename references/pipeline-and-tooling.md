@@ -21,7 +21,7 @@ Initialize a new episode directory from [`templates/`](../templates/) and [`scri
 | `hf.js` | [`scripts/hf.js`](../scripts/hf.js) | Cross-platform HyperFrames CLI wrapper injecting `ffmpeg-static` & `ffprobe-static` into `PATH`. |
 | `narration_qa.js` | [`scripts/narration_qa.js`](../scripts/narration_qa.js) | Shared Automated Narration & Audio Tail QA module (camera leaks, unmapped English, mid-video CTA, tail clipping/cutoff). |
 | `audit_all_scenes.js` | [`scripts/audit_all_scenes.js`](../scripts/audit_all_scenes.js) | Runs Automated Narration QA (`--qa-only` supported) + renders all scenes (`1..N`) to `audit_all_scenes.png` (GPU-accelerated). |
-| `render_mp4.js` | [`scripts/render_mp4.js`](../scripts/render_mp4.js) | Parallel worker GPU-accelerated MP4 exporter defaulting to Native `1920x1080 @ 30fps` with NVENC/AMF hardware encode probe & `--720p --fps 24` draft flag. |
+| `render_mp4.js` | [`scripts/render_mp4.js`](../scripts/render_mp4.js) | Parallel GPU-accelerated MP4 exporter (`1920x1080@30fps`) with `--720p --fps 24` draft, `--hq` lossless PNG pipe + NVENC `p6`, `--cq`, and `--grade horror\|sitcom\|auto` FFmpeg finishing filters. |
 | `shorts_planner.js` | [`scripts/shorts_planner.js`](../scripts/shorts_planner.js) | Cliffhanger Bridge 3-Angle Shorts planner (`40–50s`, anti-spoiler, sentence-snapped) + legacy `events`/`single`/`two_part` modes. |
 | `generate_shorts_overlays.js` | [`scripts/generate_shorts_overlays.js`](../scripts/generate_shorts_overlays.js) | Generates minimalist 9:16 title overlays + Related Video Bridge CTA overlays (`overlay_<tag>_cta.png`). |
 | `render_all_shorts.js` | [`scripts/render_all_shorts.js`](../scripts/render_all_shorts.js) | Renders native `1080x1920` Shorts (`30fps`, `-14 LUFS`) with Bridge CTA overlay & optional closing CTA VO audio. |
@@ -107,16 +107,20 @@ Executed automatically by both `node audit_all_scenes.js` (or `node audit_all_sc
 
 ---
 
-## 5. HyperFrames Contract (`v0.9.32`) & Clean Skill Export
+## 5. HyperFrames + FFmpeg Hybrid Workflow & Clean Skill Export
 
 1. **HyperFrames Rules (`0 errors, 0 warnings`):** Local Kanit `.woff2` (`assets/fonts/`) and `gsap.min.js` (`assets/vendor/`); `<canvas id="stage" ... data-layout-ignore data-hold>`; `<= 3` scene `.clip` markers per `data-track-index` lane; declarative `<audio id="master-audio">` (zero `play()`, `requestAnimationFrame`, or CSS `transition`); synchronous `window.__timelines['main'] = tl` registration before `document.fonts.ready`.
-2. **Core CLI Commands (via `node hf.js`):**
+2. **Core Hybrid CLI Commands (`hf.js` + `render_mp4.js`):**
+   - **Draft / Scrubbing:** `node hf.js preview` (interactive timeline) or `node render_mp4.js --720p --fps 24 -o draft_720p.mp4`
+   - **Fast Daily Master (`1080p @ 30fps`):** `node render_mp4.js --grade horror --cq 17 -o master_hf.mp4` (4 workers + NVENC + dark-gradient `deband` & subtle film grain, zero disk bloat)
+   - **HQ Lossless-Pipe Master:** `node render_mp4.js --hq --grade horror -o master_hf.mp4` (lossless PNG pipe + NVENC `p6` + `CQ 16` + `256k` AAC)
+   - **HyperFrames Studio Special Exports:** `node hf.js render -f 30 -q looks --gpu --browser-gpu -o master_hf.mp4` (supports `--start/--end` segment fixes, `--resume`, `--format mov` alpha, `--resolution 4k`)
    ```bash
    node generate_audio.js                                             # TTS + PRONUNCIATION_MAP + 420ms tail pad
    node sync_hyperframes.js                                           # Sync timeline + local fonts/GSAP into index.html (1920x1080@30fps)
    node hf.js lint && node hf.js check                                # 0 errors, 0 warnings + 7-gate check
    node audit_all_scenes.js                                           # Narration QA + audit_all_scenes.png grid
-   node hf.js render -f 30 -q looks --gpu --browser-gpu -o master_hf.mp4  # Native 1080p @ 30fps GPU Master (-18 LUFS; cinema alt: -f 24; fast alt: node render_mp4.js)
+   node render_mp4.js --grade horror --cq 17 -o master_hf.mp4         # Fast 1080p NVENC Master (or `--hq` for lossless PNG / `hf.js render` for Studio)
    node inspect_video.js master_hf.mp4 --strict                       # 16/16 PASS + Narration/Audio Tail QA
    ```
 3. **Clean Skill Packaging (Never Bundling `.git/`):**
