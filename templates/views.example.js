@@ -74,12 +74,14 @@ VIEWS.ots_entity_approach = function (c, lt, s) {
   const approach = prog(lt, 0, s.dur || 6);
   const ex = lerp(700, 648, approach);
   const es = lerp(1.18, 1.48, approach);
-  glow(c, ex, 340, 340, '#0D9488', 0.42);
-  glow(c, ex, 355, 160, '#EF4444', 0.22 + 0.08 * Math.sin(lt * 6));
+  drawGroundMist(c, lt, { y: 425, alpha: 0.22, col: '#99F6E4', count: 4 });
+  glow(c, ex, 340, 340, '#0D9488', 0.44);
+  glow(c, ex, 355, 165, '#EF4444', 0.26 + 0.08 * Math.sin(lt * 6));
 
-  // Towering menacing silhouette Entity centered near focal x=640 for impactful 16:9 + 9:16 covers
+  // Towering menacing Entity with tattered shroud, straggly ghost hair & glowing eyes
   drawEntity(c, ex, 535, es, {
-    t: lt, dark: true, prop: 'none', cap: false, reveal: 0.96, bloodSlits: false, eyeColor: '#EF4444'
+    t: lt, dark: true, prop: 'none', cap: false, tattered: true, hair: 'straggly', aura: true,
+    eyeGlow: true, reveal: 0.96, bloodSlits: false, eyeColor: '#EF4444'
   });
 
   // Dramatic Over-the-Shoulder (OTS) Protagonist whose tactical flashlight beam hits Entity directly
@@ -89,6 +91,7 @@ VIEWS.ots_entity_approach = function (c, lt, s) {
     pose: poseStand(lt, { lean: 0.06, arms: [{ a: 1.15, b: 0.42 }, { a: -0.18, b: 0.2 }] }),
     flashlight: true
   });
+  drawDustMotes(c, lt, { col: '#99F6E4', count: 16, alpha: 0.42 });
   vignette(c, 0.72, 0.44, '#090D16');
 };
 
@@ -121,19 +124,61 @@ VIEWS.macro_bloodstained_ticket = function (c, lt, s) {
 
 // Example D: Top-Down Tactical / Architectural Evasion View (`topDownRoom`)
 VIEWS.dilemma_booth = function (c, lt, s) {
-  const rm = topDownRoom(c, { x: 80, y: 110, w: 520, h: 490, floor: '#172133', wallCol: '#475569' });
+  const rm = topDownRoom(c, { x: 70, y: 85, w: 690, h: 540, floor: '#172133', wallCol: '#475569' });
+
+  // Right-side wall locker & emergency spill lighting to ground hiding protagonist
+  c.fillStyle = '#1E293B'; rr(c, 810, 95, 390, 520, 6); c.fill();
+  c.strokeStyle = '#334155'; c.lineWidth = 3; c.stroke();
+  for (let lx = 840; lx <= 1080; lx += 120) {
+    c.fillStyle = '#0F172A'; rr(c, lx, 145, 92, 340, 4); c.fill();
+    c.strokeStyle = '#334155'; c.lineWidth = 2; c.stroke();
+  }
 
   // Sound wave / hazard radius pulsing from corridor door
-  const pulseR = 60 + ((lt * 55) % 180);
-  c.strokeStyle = 'rgba(239,68,68,0.45)'; c.lineWidth = 2.5;
-  c.beginPath(); c.arc(rm.rx + rm.rw, rm.ry + 240, pulseR, Math.PI * 0.5, Math.PI * 1.5); c.stroke();
+  const pulseR = 65 + ((lt * 55) % 210);
+  c.strokeStyle = 'rgba(239,68,68,0.48)'; c.lineWidth = 2.8;
+  c.beginPath(); c.arc(rm.rx + rm.rw, rm.ry + 270, pulseR, Math.PI * 0.5, Math.PI * 1.5); c.stroke();
 
-  // Protagonist crouched in corner
-  drawPerson(c, 1020, 620, 1.15, {
+  // Protagonist crouched beside locker shadow
+  drawPerson(c, 965, 615, 1.24, {
     t: lt, dir: -1, profile: true, expr: 'fear', sweat: true,
     colors: { shirt: '#475569', shirtHi: '#64748B', shirtSh: '#334155' },
     pose: poseSquat(lt)
   });
-  emergency(c, 640, 220, 500, 0.22 + 0.12 * Math.sin(lt * 8));
+  emergency(c, 740, 220, 560, 0.24 + 0.12 * Math.sin(lt * 8));
+  drawDustMotes(c, lt, { col: '#FCA5A5', count: 14, alpha: 0.35 });
   vignette(c, 0.78, 0.42);
+};
+
+// Example E: Thai/Isan Folk Horror Documentary (`drawStiltHouse` Raised Timber Clearance + Cached Night Mist)
+VIEWS.folk_stilt_house_night = function (c, lt, s) {
+  cameraRig(c, lt, s.dur || 6, { zoomFrom: 1.0, zoomTo: 1.05, focusX: 740, focusY: 360, handheld: true }, () => {
+    blurLayer(c, 2.2, (bc) => {
+      outdoorStage(bc, 0, {
+        skyTop: '#040806', skyBot: '#0F221A', groundCol: '#09120D',
+        horizonY: 390, ridgeH: 48
+      });
+      drawSugarPalm(bc, 190, 405, 1.15, 0.04);
+      drawSugarPalm(bc, 310, 412, 0.85, -0.03);
+      drawBananaCluster(bc, 1140, 465, 1.05, 0);
+    }, '', 'folk_bg_stilt_house');
+
+    drawStiltHouse(c, lt, {
+      x: 0, y: 0, s: 1.0, windowLight: true,
+      underStiltFn: (uc, t, geo) => {
+        drawPerson(uc, geo.seatAnchorX, geo.seatAnchorY, geo.recommendedScale || 0.86, {
+          t, dir: -1, female: true, hairStyle: 'bun', sinh: '#5B21B6',
+          colors: { shirt: '#CBD5E1', shirtHi: '#E2E8F0', shirtSh: '#94A3B8' },
+          pose: poseSit(t, { curb: true }), expr: 'fear', sweat: true
+        });
+      }
+    });
+
+    for (let i = 0; i < 6; i++) {
+      drawRiceClump(c, 110 + i * 95, 520 + (i % 2) * 18, 0.95, lt, i * 1.7, 0.25);
+    }
+    drawGroundMist(c, lt, { y: 445, alpha: 0.20, col: '#94A3B8', count: 5 });
+    drawDustMotes(c, lt, { col: '#FDE68A', count: 18, alpha: 0.44 });
+    vignette(c, 0.66, 0.48, '#040806');
+  });
 };

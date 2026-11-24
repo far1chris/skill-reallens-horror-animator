@@ -21,8 +21,9 @@ Never use pure `#000000` for night backgrounds/water (causes `ffmpeg blackdetect
 
 ## 2. Canvas Resolution & Scaling Standard
 
-- **Base Composition:** Author `core.js`, `views.js`, and `index.html` at **`1280x720`** (`W = 1280, H = 720`).
-- **Master Export:** Export natively at `1280x720` (`node hf.js render`), `2x` DPR `2560x1440` (`--resolution 1440p`), or `1920x1080` (`node render_mp4.js --1080p`).
+- **Logical Composition:** Author `views.js` cleanly in logical **`1280×720`** coordinates (`W = 1280, H = 720`).
+- **Native 1080p @ 30fps Export (Default):** `index.html` and `render_mp4.js` render natively onto **`1920×1080 @ 30fps`** via `rs = 1.5` canvas transform + scaled offscreen buffers (`getRenderScale()` / `ensureOffscreenSize()`). Use **`node hf.js render -f 30 -q looks --gpu --browser-gpu`** or **`node render_mp4.js`** (NVENC/AMF GPU + 4 parallel workers).
+- **Fast Draft / Cinema Mode:** Pass `--720p --fps 24` to `render_mp4.js` (`node sync_hyperframes.js --width 1280 --height 720 --fps 24`) or `-f 24 -q draft` to `hf.js render`, or `--resolution 1440p` (`2560×1440`) when integer `2×` DPR is requested.
 - **9:16 Vertical Shorts Safe Zone (`1080x1920`):** Keep subtitles at `Y <= 1580` (`subY = 1500` default), clear of top `180px`, bottom `320px` (where channel name & Related Video button sit), and right `140px` action buttons.
 
 ---
@@ -54,16 +55,16 @@ When `hudMode === "documentary"`:
    - Always customize `colors: { shirt, shirtHi, shirtSh, pants, pantsSh }` per episode! Supports `female`, `hairStyle: 'short'|'long'|'bun'`, `sinh`, `sash`, `swollenBelly`, `bundle`, `torch`, `wand`, `weaving`, `flashlight`, `coldBreath`, `shiver`, `coverMouth`.
 3. **Entity Rig (`drawEntity(c, x, y, s, o)` & `drawJanitor`):**
    - Strict Z-index order: `suitSh` far arm → prop → torso → `suitHi` near arm.
-   - `drawEntity()` defaults to `prop: 'none'` and `cap: false` so every threat matches its lore (only `drawJanitor()` enables mop/cap).
+   - `drawEntity()` defaults to `prop: 'none'` and `cap: false` so every threat matches its lore (only `drawJanitor()` enables mop/cap). Supports eerie upgrades: `aura` (dark spectral halo), `tattered` (jagged shroud hem), `hair: 'straggly'`, `eyeGlow`, hollow cheek shadows, and `mouth`.
 4. **Macro POV Forearm (`hand(c, x, y, ang, s, o)`):**
    - Strictly `400px` long anchored off the canvas edge (`y = 760..820`) — never a short floating arm. Pair writing/taping reveals with synchronized `ctx.clip()`. Use ONLY for physical in-world interaction (never pointing `marker` at diagram boards).
 5. **Setting-Native Stage Builders (Optional Tools — NOT a Mandatory Checklist):**
-   - `outdoorStage(c, t, { skyTop, skyBot, groundCol, horizonY, water, ridgeH })` + **Rural Thai Builders:** `drawStiltHouse(c, t, o)`, `drawSugarPalm(c, x, y, s, sway)`, `drawRiceClump(c, x, y, s, t, seed, litWarm)`, `drawBananaCluster(c, x, y, s, t)`, `drawDikeGrass(c, x, y, s, seed, warm)`.
+   - `outdoorStage(c, t, { skyTop, skyBot, groundCol, horizonY, water, ridgeH })` + **Rural Thai Builders:** `drawStiltHouse(c, t, o)` (raised timber floor beam `floorY: 322` with `recommendedScale: 0.86` for seated `underStiltFn` characters so heads clear the floor beam cleanly), `drawSugarPalm(c, x, y, s, sway)`, `drawRiceClump(c, x, y, s, t, seed, litWarm)`, `drawBananaCluster(c, x, y, s, t)`, `drawDikeGrass(c, x, y, s, seed, warm)`.
    - `roomCorner(c, { cornerX, topY, botY })` — strictly for enclosed interiors (never force outdoor witnesses into `roomCorner()`).
    - `topDownRoom(c, { x, y, w, h, grid })` — strictly for walled interiors (never for forests/camps).
    - `cctvOverlay(c, t, { camLabel })` — only for security/trailcam/optical feeds.
    - `corridor(c, t, o)` — tunnels/hallways (`mallShops: true` only in malls; vary `camH`, `vx`, `vy`).
-   - Post/FX: `cameraRig(c, lt, dur, o, fn)`, `blurLayer(c, px, fn, extra)`, `flick()`, `glow()`, `vignette()`, `darken()`, `emergency()`, `frostOverlay()`, `grain()`.
+   - Post/FX & Atmosphere: `cameraRig(c, lt, dur, o, fn)`, `blurLayer(c, px, fn, extra, cacheKey)` (pass static `'cacheKey'` on non-moving blurred layers for 40–60% faster `1080p` renders), `drawGroundMist(c, t, o)` (low drifting fog ribbons), `drawDustMotes(c, t, o)` (fireflies/dust/embers), `flick()`, `glow()`, `vignette()`, `darken()`, `emergency()`, `frostOverlay()`, `grain()`.
 6. **Canonical Signatures (Anti-Distortion):**
    - `prog(t, startA, endB)` takes `(t, start, end)` — **NOT** `(t, start, duration)`.
    - `txt(c, s, x, y, numericSize, col, weight, align, base)` takes numeric `size` — **NOT** CSS font strings.

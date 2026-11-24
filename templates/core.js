@@ -745,10 +745,15 @@ function drawEntity(c, x, y, s, o = {}) {
   const suitHi = o.suitHi || (o.dark ? '#4D5562' : '#737C89');
   const suitSh = o.suitSh || (o.dark ? '#2A3039' : '#454C57');
   const skin = o.skin || '#CFD3D8';
+  const showAura = o.aura !== undefined ? Boolean(o.aura) : Boolean(o.dark);
+  const showTattered = o.tattered !== undefined ? Boolean(o.tattered) : (Boolean(o.dark) && o.cap !== true && o.prop !== 'mop' && o.prop !== true);
 
   c.save(); c.translate(x, y); const _rc = applyShortsRigComp(c); c.scale(s * (o.dir || 1), s * (o.tall || 1.14));
-  if (o.shadow !== false) { c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.ellipse(0, 0, 40, 7, 0, 0, TAU); c.fill(); }
+  if (o.shadow !== false) { c.fillStyle = 'rgba(0,0,0,0.34)'; c.beginPath(); c.ellipse(0, 0, 42, 8, 0, 0, TAU); c.fill(); }
   const by = P.by || 0, hipY = -96 + by;
+  if (showAura) {
+    glow(c, 0, -148 + by, 86, o.auraColor || '#020617', 0.42);
+  }
   const leg = (hx, L, col) => {
     const kx = hx + 46 * Math.sin(L.a), ky = hipY + 46 * Math.cos(L.a), sa = L.a - L.b, ax = kx + 46 * Math.sin(sa), ay = ky + 46 * Math.cos(sa);
     limbContour2(c, hx, hipY, kx, ky, ax, ay, 17);
@@ -773,6 +778,16 @@ function drawEntity(c, x, y, s, o = {}) {
 
   c.fillStyle = cyl(c, -24, 48, suit, suitHi, suitSh); rr(c, -24, -168 + by, 48, 80, 12); c.fill();
   c.strokeStyle = 'rgba(5, 7, 12, 0.55)'; c.lineWidth = 2; c.stroke();
+  if (showTattered) {
+    c.fillStyle = suitSh;
+    c.beginPath();
+    c.moveTo(-24, -92 + by);
+    c.lineTo(-20, -68 + by); c.lineTo(-12, -82 + by); c.lineTo(-3, -64 + by);
+    c.lineTo(6, -80 + by); c.lineTo(14, -66 + by); c.lineTo(24, -84 + by); c.lineTo(24, -94 + by);
+    c.closePath();
+    c.fill();
+    c.strokeStyle = 'rgba(5, 7, 12, 0.55)'; c.lineWidth = 1.6; c.stroke();
+  }
   c.strokeStyle = 'rgba(148, 197, 255, 0.26)'; c.lineWidth = 1.8;
   c.beginPath(); c.moveTo(-21, -160 + by); c.lineTo(-21, -96 + by); c.stroke();
   if (o.badge === true) { c.fillStyle = '#C9CDD2'; rr(c, 4, -150 + by, 14, 8, 2); c.fill(); }
@@ -783,8 +798,18 @@ function drawEntity(c, x, y, s, o = {}) {
   limb(c, -6, -158 + by, 4, -128, 13, suitHi, suitSh, { contour: false }); limb(c, 4, -128, 18, -142, 11, skin, null, { contour: false });
   c.fillStyle = skin; rr(c, -5, -178 + by, 12, 14, 3); c.fill();
 
-  // Head / Mask (with sunken hollow eye-sockets + eerie cold rim edge)
+  // Head / Mask (with sunken hollow eye-sockets, optional straggly hair & eerie glow)
   c.save(); c.translate(0, -206 + by); c.rotate(o.tilt || 0);
+  if (o.hair === 'straggly') {
+    c.fillStyle = '#07090F';
+    c.beginPath();
+    c.moveTo(-28, -16);
+    c.quadraticCurveTo(-33, 18, -28, 52); c.lineTo(-20, 38); c.lineTo(-16, 48); c.lineTo(-12, 22);
+    c.lineTo(14, 22); c.lineTo(20, 46); c.lineTo(25, 34); c.lineTo(31, 50);
+    c.quadraticCurveTo(33, 14, 27, -18);
+    c.closePath();
+    c.fill();
+  }
   c.fillStyle = cyl(c, -25, 50, o.headColor || '#DEE1E5', o.headHi || '#F1F3F5', o.headSh || '#B8BEC6');
   rr(c, -25, -30, 50, 60, 22); c.fill();
   c.strokeStyle = 'rgba(5, 7, 12, 0.5)'; c.lineWidth = 1.8; c.stroke();
@@ -792,7 +817,14 @@ function drawEntity(c, x, y, s, o = {}) {
   c.strokeStyle = 'rgba(148, 197, 255, 0.30)'; c.lineWidth = 3.2;
   c.beginPath(); c.moveTo(-22, -22); c.quadraticCurveTo(-24.5, 0, -15, 24); c.stroke();
   c.restore();
-  if (o.cap === true) {
+  if (o.hair === 'straggly') {
+    c.fillStyle = '#07090F';
+    c.beginPath();
+    c.moveTo(-27, -12); c.quadraticCurveTo(-24, -38, 0, -37); c.quadraticCurveTo(26, -37, 27, -10);
+    c.lineTo(21, -2); c.lineTo(15, -18); c.lineTo(8, -6); c.lineTo(1, -20); c.lineTo(-7, -7); c.lineTo(-15, -19); c.lineTo(-22, -2);
+    c.closePath();
+    c.fill();
+  } else if (o.cap === true) {
     c.fillStyle = o.capColor || '#353B45';
     rr(c, -27, -36, 54, 18, [20, 20, 3, 3]); c.fill();
     rr(c, 4, -22, 30, 6, 3); c.fill();
@@ -800,6 +832,10 @@ function drawEntity(c, x, y, s, o = {}) {
   const rv = o.reveal !== undefined ? o.reveal : 0.85;
   if (rv > 0) {
     c.globalAlpha = rv;
+    // Gaunt hollow cheek shadows
+    c.strokeStyle = 'rgba(8, 10, 16, 0.34)'; c.lineWidth = 2.0; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(-17, 6); c.quadraticCurveTo(-15, 14, -10, 18); c.stroke();
+    c.beginPath(); c.moveTo(19, 6); c.quadraticCurveTo(17, 14, 12, 18); c.stroke();
     // Eerie sunken eye-socket shadow halos
     for (const sx of [-8, 10]) {
       const hg = c.createRadialGradient(sx, 0, 2, sx, 0, 12);
@@ -807,15 +843,22 @@ function drawEntity(c, x, y, s, o = {}) {
       hg.addColorStop(1, 'rgba(8, 10, 16, 0)');
       c.fillStyle = hg; c.beginPath(); c.arc(sx, 0, 12, 0, TAU); c.fill();
     }
+    if (o.eyeGlow !== false && o.eyeColor && o.eyeColor !== '#0B0B0D') {
+      glow(c, -8, 0, 15, o.eyeColor, 0.42 * rv);
+      glow(c, 10, 0, 15, o.eyeColor, 0.42 * rv);
+    }
     c.fillStyle = o.eyeColor || '#0B0B0D';
     c.beginPath(); c.ellipse(-8, 0, 5, 8 * rv, 0, 0, TAU); c.fill();
     c.beginPath(); c.ellipse(10, 0, 5, 8 * rv, 0, 0, TAU); c.fill();
-    // Subtle uncanny pinpoint pale glare inside dark sockets
-    c.fillStyle = 'rgba(248, 250, 252, 0.65)';
+    c.fillStyle = 'rgba(248, 250, 252, 0.68)';
     c.beginPath(); c.arc(-7, -2 * rv, 1.1, 0, TAU); c.arc(11, -2 * rv, 1.1, 0, TAU); c.fill();
     if (o.bloodSlits !== false) {
       c.strokeStyle = '#6B0F1A'; c.lineWidth = 2.2;
       c.beginPath(); c.moveTo(-8, 8); c.lineTo(-8, 8 + 14 * rv); c.moveTo(10, 8); c.lineTo(10, 8 + 10 * rv); c.stroke();
+    }
+    if (o.mouth !== false && rv >= 0.75) {
+      c.fillStyle = 'rgba(8, 10, 16, 0.75)';
+      c.beginPath(); c.ellipse(1, 17.5, 4.5, 3.0 * rv, 0, 0, TAU); c.fill();
     }
     c.globalAlpha = 1;
   } else {
@@ -1183,14 +1226,14 @@ function outdoorStage(c, t, o = {}) {
   c.fillStyle = gg; c.fillRect(0, horizonY, W, H - horizonY);
 
   // Horizon atmospheric mist glow band
-  const hg = c.createLinearGradient(0, horizonY - 38, 0, horizonY + 28);
+  const hg = c.createLinearGradient(0, horizonY - 42, 0, horizonY + 34);
   hg.addColorStop(0, 'rgba(148, 175, 205, 0)');
-  hg.addColorStop(0.55, 'rgba(148, 175, 205, 0.14)');
+  hg.addColorStop(0.55, 'rgba(148, 175, 205, 0.20)');
   hg.addColorStop(1, 'rgba(148, 175, 205, 0)');
-  c.fillStyle = hg; c.fillRect(0, horizonY - 38, W, 66);
+  c.fillStyle = hg; c.fillRect(0, horizonY - 42, W, 76);
 
   if (o.water) {
-    c.strokeStyle = o.waveCol || 'rgba(125,211,252,0.20)'; c.lineWidth = 2;
+    c.strokeStyle = o.waveCol || 'rgba(125,211,252,0.22)'; c.lineWidth = 2;
     for (let r = 0; r < 9; r++) {
       const wy = horizonY + 18 + r * r * 3.4;
       if (wy > H) break;
@@ -1207,12 +1250,12 @@ function outdoorStage(c, t, o = {}) {
   for (let m = 0; m < 2; m++) {
     const my = horizonY + 34 + m * 46;
     const mxOff = Math.sin(t * 0.55 + m * 2.1) * 45;
-    const mg = c.createLinearGradient(0, my - 18, 0, my + 22);
+    const mg = c.createLinearGradient(0, my - 20, 0, my + 24);
     mg.addColorStop(0, 'rgba(148, 163, 184, 0)');
-    mg.addColorStop(0.5, 'rgba(148, 163, 184, 0.08)');
+    mg.addColorStop(0.5, 'rgba(148, 163, 184, 0.13)');
     mg.addColorStop(1, 'rgba(148, 163, 184, 0)');
-    c.fillStyle = mg; c.fillRect(Math.max(0, mxOff), my - 18, W - Math.abs(mxOff), 40);
-    c.strokeStyle = 'rgba(186, 230, 253, 0.12)'; c.lineWidth = 1.1;
+    c.fillStyle = mg; c.fillRect(Math.max(0, mxOff), my - 20, W - Math.abs(mxOff), 44);
+    c.strokeStyle = 'rgba(186, 230, 253, 0.18)'; c.lineWidth = 1.2;
     c.beginPath();
     c.moveTo(120 + mxOff, my - 4);
     c.quadraticCurveTo(W * 0.5 + mxOff, my - 12 + m * 4, W - 120 + mxOff, my - 4);
@@ -1565,7 +1608,9 @@ function drawStiltHouse(c, t = 0, o = {}) {
   if (o.x || o.y) c.translate(o.x || 0, o.y || 0);
   if (o.s != null && o.s !== 1) c.scale(o.s, o.s);
 
-  const floorY = 350, groundY = 512, peakX = 762, peakY = 132;
+  const floorY = o.floorY !== undefined ? o.floorY : 322;
+  const lift = floorY - 350;
+  const groundY = 512, peakX = 762, peakY = 132;
   const winOn = o.windowLight !== false;
 
   if (o.mound !== false) {
@@ -1621,9 +1666,9 @@ function drawStiltHouse(c, t = 0, o = {}) {
   }
 
   if (typeof o.underStiltFn === 'function') {
-    o.underStiltFn(c, t, { floorY, groundY, bedY: 454, seatAnchorX: 896, seatAnchorY: 500 });
+    o.underStiltFn(c, t, { floorY, groundY, bedY: 454, seatAnchorX: 896, seatAnchorY: 506, recommendedScale: 0.86 });
   } else if (o.entity) {
-    drawEntity(c, 896, 500, 0.68, Object.assign({
+    drawEntity(c, 896, 506, 0.68, Object.assign({
       t, dark: true, tall: 1.0, dir: -1, prop: 'none', cap: false,
       suit: '#161C26', suitHi: '#222B3B', suitSh: '#0E131B',
       skin: '#202836',
@@ -1680,6 +1725,9 @@ function drawStiltHouse(c, t = 0, o = {}) {
     c.restore();
   }
 
+  // Upper house timber body raised smoothly by `lift` for clear under-stilt headroom
+  c.save();
+  if (lift) c.translate(0, lift);
   c.fillStyle = '#241811'; c.fillRect(838, 234, 148, 114);
   for (let py = 240; py < 346; py += 14) {
     c.strokeStyle = '#07090F'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(838, py); c.lineTo(986, py); c.stroke();
@@ -1716,11 +1764,12 @@ function drawStiltHouse(c, t = 0, o = {}) {
 
   if (winOn) {
     c.save(); c.globalCompositeOperation = 'screen';
-    const wBeam = c.createLinearGradient(900, 283, 825, 505);
+    const beamBotY = 505 - lift;
+    const wBeam = c.createLinearGradient(900, 283, 825, beamBotY);
     wBeam.addColorStop(0, 'rgba(245, 158, 11, 0.22)');
     wBeam.addColorStop(1, 'rgba(245, 158, 11, 0)');
     c.fillStyle = wBeam;
-    c.beginPath(); c.moveTo(878, 306); c.lineTo(922, 306); c.lineTo(878, 505); c.lineTo(790, 505); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(878, 306); c.lineTo(922, 306); c.lineTo(878, beamBotY); c.lineTo(790, beamBotY); c.closePath(); c.fill();
     c.restore();
   }
 
@@ -1762,6 +1811,7 @@ function drawStiltHouse(c, t = 0, o = {}) {
   c.strokeStyle = 'rgba(186, 230, 253, 0.38)'; c.lineWidth = 1.6;
   c.beginPath(); c.moveTo(656, 242); c.lineTo(peakX, peakY - 7); c.lineTo(976, peakY + 3); c.stroke();
   c.restore();
+  c.restore();
 }
 
 // --------------------------------------------------------- ATMOSPHERIC POST & SHADERS
@@ -1792,6 +1842,48 @@ function frostOverlay(c, intensity = 0.55, t = 0) {
     const cx = W / 2 + Math.cos(ang) * (W * 0.48), cy = H / 2 + Math.sin(ang) * (H * 0.48);
     const len = (24 + hash(i * 9.3 + Math.floor(t * 2)) * 34) * k;
     c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx - Math.cos(ang) * len, cy - Math.sin(ang) * len); c.stroke();
+  }
+  c.restore();
+}
+
+// Low drifting ground mist & ambient fireflies/dust motes (lightweight, high depth separation)
+function drawGroundMist(c, t = 0, o = {}) {
+  const y0 = o.y !== undefined ? o.y : 430;
+  const col = o.col || '#94A3B8';
+  const alpha = o.alpha !== undefined ? o.alpha : 0.18;
+  const count = o.count || 5;
+  c.save();
+  for (let i = 0; i < count; i++) {
+    const k = i / Math.max(1, count - 1);
+    const bandY = lerp(y0, H - 55, k);
+    const bandH = lerp(42, 76, k);
+    const drift = Math.sin(t * (0.38 + i * 0.09) + i * 1.9) * (48 + i * 12);
+    const g = c.createLinearGradient(0, bandY - bandH * 0.5, 0, bandY + bandH * 0.5);
+    g.addColorStop(0, rgba(col, 0));
+    g.addColorStop(0.5, rgba(col, alpha * (0.55 + 0.45 * Math.sin(t * 0.7 + i))));
+    g.addColorStop(1, rgba(col, 0));
+    c.fillStyle = g;
+    c.fillRect(Math.max(-60, drift - 60), bandY - bandH * 0.5, W + 120, bandH);
+  }
+  c.restore();
+}
+
+function drawDustMotes(c, t = 0, o = {}) {
+  const count = o.count || 20;
+  const col = o.col || '#FEF08A';
+  const alpha = o.alpha !== undefined ? o.alpha : 0.48;
+  const xMin = o.xMin !== undefined ? o.xMin : 60, xMax = o.xMax !== undefined ? o.xMax : W - 60;
+  const yMin = o.yMin !== undefined ? o.yMin : 120, yMax = o.yMax !== undefined ? o.yMax : H - 100;
+  c.save();
+  c.globalCompositeOperation = 'screen';
+  for (let i = 0; i < count; i++) {
+    const px = lerp(xMin, xMax, hash(i * 17.3 + 1)) + Math.sin(t * (0.9 + hash(i) * 0.7) + i * 2.1) * 26;
+    const py = lerp(yMin, yMax, hash(i * 31.7 + 3)) + Math.cos(t * (0.8 + hash(i + 4) * 0.6) + i * 1.4) * 18;
+    const pulse = 0.35 + 0.65 * Math.abs(Math.sin(t * (1.8 + hash(i + 9) * 1.5) + i));
+    const r = (1.6 + hash(i * 7.1) * 2.2) * (0.85 + 0.3 * pulse);
+    glow(c, px, py, r * 4.5, col, alpha * 0.42 * pulse);
+    c.fillStyle = rgba(col, alpha * pulse);
+    c.beginPath(); c.arc(px, py, r, 0, TAU); c.fill();
   }
   c.restore();
 }
