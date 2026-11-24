@@ -416,18 +416,19 @@ const MAKE_COVERS_HTML = `<!DOCTYPE html>
   const cfgPath = path.join(projectDir, 'shorts_config.json');
   const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, 'utf8')) : {};
   const epJsPath = path.join(projectDir, 'episode.js');
-  if (fs.existsSync(epJsPath)) {
+    if (fs.existsSync(epJsPath)) {
     try {
       const epMod = require(epJsPath);
       if (!cfg.SHORTS_TITLE && !cfg.shortsTitle && (epMod.SHORTS_TITLE || epMod.shortsTitle)) cfg.SHORTS_TITLE = epMod.SHORTS_TITLE || epMod.shortsTitle;
       if (!cfg.SHORTS_SUB_HOOK && !cfg.shortsSubHook && (epMod.SHORTS_SUB_HOOK || epMod.shortsSubHook)) cfg.SHORTS_SUB_HOOK = epMod.SHORTS_SUB_HOOK || epMod.shortsSubHook;
       if (!cfg.TITLE_RED_LINE && !cfg.titleRedLine && (epMod.TITLE_RED_LINE || epMod.titleRedLine)) cfg.TITLE_RED_LINE = epMod.TITLE_RED_LINE || epMod.titleRedLine;
+      if (!cfg.SHORTS_ANGLES && Array.isArray(epMod.SHORTS_ANGLES)) cfg.SHORTS_ANGLES = epMod.SHORTS_ANGLES;
     } catch (_) {}
   }
 
-  const maxSec = Number(getArg('--max-sec') || cfg.maxSec || 58);
-  const minSec = Number(getArg('--min-sec') || cfg.minSec || 45);
-  const format = hasFlag('--single') ? 'single' : (getArg('--format') || cfg.shortsFormat || undefined);
+  const maxSec = getArg('--max-sec') ? Number(getArg('--max-sec')) : (cfg.maxSec ? Number(cfg.maxSec) : undefined);
+  const minSec = getArg('--min-sec') ? Number(getArg('--min-sec')) : (cfg.minSec ? Number(cfg.minSec) : undefined);
+  const format = hasFlag('--cliffhanger') ? 'cliffhanger' : (hasFlag('--single') ? 'single' : (getArg('--format') || cfg.shortsFormat || undefined));
   const allowOver60 = hasFlag('--allow-over-60') || Boolean(cfg.allowOver60);
   const onlyEvents = hasFlag('--events-only');
 
@@ -501,7 +502,7 @@ const MAKE_COVERS_HTML = `<!DOCTYPE html>
         const b64 = await scenePage.evaluate(t => {
           // Hard-disable ALL HUD layers (Telemetry top-right, chapter, cards, subtitles) on cover frames,
           // even when the project's index.html predates the __HIDE_HUD guard.
-          const HUD_FNS = ['drawTele', 'drawChapter', 'drawCard', 'drawFlow', 'drawSub', 'drawHud'];
+          const HUD_FNS = ['drawTele', 'drawChapter', 'drawCard', 'drawFlow', 'drawSub', 'drawHud', 'drawShortsEndingCTA'];
           const saved = {};
           for (const k of HUD_FNS) {
             if (typeof window[k] === 'function') { saved[k] = window[k]; try { window[k] = function () {}; } catch (_) {} }
@@ -525,7 +526,8 @@ const MAKE_COVERS_HTML = `<!DOCTYPE html>
       return 'ffmpeg';
     }
 
-    console.log(`=== 1. Extracting Full-Screen Key-Scene Climax Frames (${episodes.length} EPs, <= ${allowOver60 ? maxSec : Math.min(maxSec, 60)}s each) ===`);
+    const resolvedCap = maxSec || (planned.some(p => p.isCliffhanger) ? 50 : 58);
+    console.log(`=== 1. Extracting Full-Screen Key-Scene Climax Frames (${episodes.length} clips, <= ${allowOver60 ? resolvedCap : Math.min(resolvedCap, 60)}s each) ===`);
     for (const ep of episodes) {
       const span = Math.max(0.5, ep.end - ep.start);
       const candidates = [

@@ -1,87 +1,80 @@
-# Visual & HUD Specifications (@real_lens1 Style)
+# Visual, Camera & HUD Specifications (@real_lens1 & Folk Horror Documentary)
 
-This reference defines the exact color tokens, typography, HUD card blueprints, multi-theme shaders, and the complete `core.js` Canvas2D API used in **Real Lens** 2.5D geometric survival horror animations.
+This reference defines the exact color tokens, dual-mode HUD system (`survival` vs `documentary`), canonical `core.js` Canvas2D rig/stage API, and camera pitch diversity rules.
 
-> **Production Source Files:** Copy the complete, runnable implementations from [`templates/core.js`](../templates/core.js), [`templates/views.example.js`](../templates/views.example.js), and [`scripts/audit_all_scenes.js`](../scripts/audit_all_scenes.js) rather than typing partial snippets by hand.
+> **Production Source Files:** Copy runnable implementations from [`templates/core.js`](../templates/core.js), [`templates/views.example.js`](../templates/views.example.js), and [`scripts/audit_all_scenes.js`](../scripts/audit_all_scenes.js).
 
 ---
 
-## 1. Color Palette Tokens
+## 1. Multi-Theme Atmospheric Palettes
 
-| Element | Hex / RGBA | Usage |
-| :--- | :--- | :--- |
-| **Liminal Mall Fluorescent (Theme A)** | `#2A2614` → `#14120A` (Tube: `#FEF08A` @ 0.85) | Infinite mall corridors, sickly yellow ambient light & ceiling fixture grids |
-| **Polar Vortex / Deep Freeze (Theme B)** | `#082F49` → `#1E293B` (Ice: `#38BDF8`, Heat: `#F97316`) | Sub-zero disaster backdrop, `frostOverlay()` border creep & `coldBreath` vapor |
-| **Night Shift / Visible Midnight (Theme C)** | `#162030` → `#283040` / `#3B281B` | Visible dark interiors, night streets, teak wood — **NEVER pure `#000000`** |
-| **HUD Card Surface (Warm Cream)** | `#F5EFE6` (Alt: `#FAF7F2`, Shadow: `rgba(0,0,0,0.45)`) | Signature warm cream surface for in-scene rules, math, and clue cards |
-| **HUD Card Border** | `#D6CFC2` (1.5px) | Crisp border separating cards from blurred background |
-| **HUD Badge Pill (Danger Red)** | `#B91C1C` (Text: `#FFFFFF`) | Red pill header inside Rule Cards (`⚠ กฎข้อ 1–N`) |
-| **HUD Badge Pill (Neutral/Slate)** | `#18181B` (Text: `#FFFFFF`) | Dark charcoal pill header for Info, Inventory, Pattern, or Clue cards |
-| **Telemetry Container (Top-Right)** | `rgba(14, 14, 18, 0.84)` | Dark rounded rectangle holding day/location, time, status, and primary meter bar |
-| **Distance Tracker Pill** | `#F5EFE6` with `#18181B` inner pill | Cream outer pill, charcoal inner badge (`● ระยะห่าง`), crimson distance text (`4 ม.`) |
-| **Protagonist Skin** | `#C98B5E` (`Hi: #D9A27A`, `Sh: #A66C44`) | Warm cylindrical gradient (`cyl()`) on head, neck, and hands |
-| **Under-Eye Fatigue Crescent** | `rgba(70, 30, 20, 0.22–0.45)` | Soft crescent shadow under eyes conveying exhaustion and dread |
-| **Emergency Exit Sign Neon** | `#22C55E` / `#10B981` (Glow: `rgba(34, 197, 94, 0.4)`) | Glowing green exit sign in distance |
+Never use pure `#000000` for night backgrounds/water (causes `ffmpeg blackdetect` failures). Always layer visible midtones across **4 depth planes**:
+
+| Theme Preset | Primary Palette | Lighting & Atmosphere (`core.js`) | Focal Accent / Helpers |
+| :--- | :--- | :--- | :--- |
+| **Folk Horror Documentary (Thai/Isan)** | `#040806`, `#091510`, `#0F221A` | Murky deep forest-green/charcoal darkness, lantern warmth, mist | Vivid Crimson `#DC2626`/`#EF4444` or Flashlight `#FACC15`, `drawStiltHouse()`, `outdoorStage()`, Clean Cinema (`hudMode: 'documentary'`) |
+| **A. Liminal Space / ห้างร้าง** | `#0B0F19`, `#10B981`, `#EF4444` | Flickering fluorescent glow (`#FEF08A`), deep silhouettes | `corridor()`, `drawEntity()` / `drawJanitor()`, `emergency()` |
+| **B. ภัยพิบัติเอาตัวรอด (Freeze / Flood)** | `#082F49`, `#38BDF8`, `#F97316` | Rolling storm/mist, cold vapor & waves | `frostOverlay()`, `coldBreath: true`, `shiver: true`, `outdoorStage()` |
+| **C. กฎกะดึก (Night Shift)** | `#162030`, `#283040`, `#3B281B` | Heavy slate shadows, tactical beam contrast | `coverMouth: true`, `drawEntity({ cap: false })`, `vignette()` |
 
 ---
 
 ## 2. Canvas Resolution & Scaling Standard
 
-- **Base Composition Coordinate Space:** Always author `core.js`, `views.js`, and `index.html` at **`1280x720`** (`W = 1280, H = 720`).
-- **Master Export Scaling:** Export natively at `1280x720` (`node hf.js render`), at `2x` integer DPR `2560x1440` (`node hf.js render --resolution 1440p`), or upscale cleanly to `1920x1080` via FFmpeg Lanczos (`node render_mp4.js --1080p`). *(Note: HyperFrames `--resolution` requires integer scale multiples of the composition dimensions.)*
-- **9:16 Vertical Shorts Safe Zone:** When rendering native `SHORTS_MODE` or `render_all_shorts.js`, keep subtitles at $Y \le 1580\text{ px}$ (`1080x1920`) or inside the centered `1080x608` frame (`y: 576..1184`), and keep HUD cards $\le 880\text{ px}$ wide with $\ge 140\text{ px}$ right clearance.
+- **Base Composition:** Author `core.js`, `views.js`, and `index.html` at **`1280x720`** (`W = 1280, H = 720`).
+- **Master Export:** Export natively at `1280x720` (`node hf.js render`), `2x` DPR `2560x1440` (`--resolution 1440p`), or `1920x1080` (`node render_mp4.js --1080p`).
+- **9:16 Vertical Shorts Safe Zone (`1080x1920`):** Keep subtitles at `Y <= 1580` (`subY = 1500` default), clear of top `180px`, bottom `320px` (where channel name & Related Video button sit), and right `140px` action buttons.
 
 ---
 
-## 3. Clean Cinematic Story Output (HUD Cards, Telemetry & Red Chapter Pills Disabled)
+## 3. Dual HUD Architecture (`hudMode: "survival" | "documentary"`)
 
-For **clean cinematic horror storytelling** without infographic lecture clutter:
-- **`drawChapter(c, chap, lt)` — PERMANENTLY DISABLED:** Red pill chapter banners such as `บทนำ · COLD OPEN` or `องก์ที่ ...` are removed (`return;`). Do NOT add `chapter:` in `episode.js`.
-- **`drawTele(c, s, lt)` & `drawCard` / `drawFlow` — DISABLED BY DEFAULT (`window.__ENABLE_STORY_TELE = false`, `window.__ENABLE_STORY_HUD = false`):** Top-right dark telemetry boxes (`● คืนฝนพรำ ... / ระดับเสียง / ระยะห่าง`), cream info/medical/anthropology explainer cards (`● ถอดรหัส...`), math tables, rule boxes, and dilemma flowcharts NEVER render over story scenes.
-- **No Infographic Explainer Diagrams in `views.js`:** Never draw bulleted summary panels, PowerPoint slide layouts, biological/medical chart breakdowns, or marker-pointing lecture boards inside `views.js` — let the 2.5D visual scene and frameless subtitles (`drawSub()`) carry 100% of the story cleanly.
+`templates/core.js` and `templates/index.html` support two mutually exclusive HUD modes via `HUD_MODE` in `episode.js` (propagated to `timeline.json`), `window.HUD_MODE`, `?hudMode=documentary`, HyperFrames composition variable `hudMode`, or per-scene `scene.hudMode`.
 
-*(Helper utilities `cardBox()` / `badge()` remain defined only if custom external thumbnail scripts use them; do NOT render in-story HUD/Telemetry banners.)*
+### 3.1 `hudMode: "survival"` (Backward-Compatible Default)
+- **Clean Cinematic Story Output:** Inside story scenes, `drawChapter()` is permanently disabled (zero red `บทนำ · COLD OPEN` pills). Game telemetry (`drawTele()`) and warm-cream `#F5EFE6` survival rule/math/dilemma cards (`drawCard()`, `drawFlow()`) stay **OFF by default** (`window.__ENABLE_STORY_TELE = false`, `window.__ENABLE_STORY_HUD = false`) unless a legacy survival project explicitly opts in.
+- **No Disguised Lecture Boards in `views.js`:** Never draw centered rectangle boards `rr(c, 120, 70, ...)` with dashed `setLineDash` arrows + `hand({ marker })`.
+
+### 3.2 `hudMode: "documentary"` (Clean Cinema Mode — Zero On-Screen Popup Boxes)
+When `hudMode === "documentary"`:
+- **Clean Screen (100% Pure Animation + Frameless Subtitles ONLY):**
+  - `drawTele()`, `drawCard()`, and `drawFlow()` early-return immediately so game-style energy/oxygen/sound meters and survival rule cards NEVER appear.
+  - **ห้ามวาดป้ายหรือกรอบข้อความป๊อปอัปใด ๆ ทับบนภาพแทน** — ให้ผู้ชมโฟกัสกับงานภาพแอนิเมชัน แสงเงา บรรยากาศ และซับไตเติล (`drawSub()`) เท่านั้น เพื่อไม่ให้หน้าจอรกลดทอนอารมณ์สารคดีสยองขวัญ
+  - หากต้องการเล่าปี พ.ศ., สถานที่, ศัพท์การแพทย์, หรือข้อความจากบันทึกประวัติศาสตร์ ให้เล่าผ่านบทพากย์ (`narration`), ซับไตเติล, หรือ **วัตถุจริงภายในโลกของฉาก** (เช่น หน้าหนังสือพิมพ์เก่า, ป้ายหมู่บ้าน, แฟ้มประวัติบนโต๊ะที่ส่องไฟฉาย) แทนการแปะกล่อง HUD ทับบนหน้าจอ
 
 ---
 
-## 4. Complete `core.js` Reference API
+## 4. Complete `core.js` Rig, Pose & Stage API
 
-See [`templates/core.js`](../templates/core.js) for the full production implementation:
-
-1. **2-Segment FK Poses & Hip-Pivot Seamless Limbs:** `poseWalk(t, speed, amp)` (with `Math.max(0, ...)` clamped knees), `poseStand(t, o)`, **`poseFloorSit(t, o)` / `poseSit(t, { floor: true })`** (`by: 72`, natural tucked/cross-legged floor sit on mats/ground/campfire), **`poseSit(t, { curb: true })`** (`by: 54` on low logs/steps), **`poseSit(t, o)`** (`by: 34` on chairs/benches under `hipY`), **`poseSquat(t, o)`** (`by: 64` deep squat), **`poseKneel(t, o)`** (`by: 58` low ground kneel — NEVER use `poseKneel` as a substitute for sitting on a mat/ground!), `poseClimb(t, speed)`. Torso `lean` in `drawPerson` pivots cleanly around `hipY` (preventing waist detachment), and `clampSitArms()` prevents zombie-like stiff horizontal forearms unless `rawArms: true` is passed. `limbContour2()` + `limb()` automatically render a continuous ambient dark contour underpass behind both segments plus a delicate lit-edge rim highlight.
-2. **Signature Protagonist Rig (`drawPerson(c, x, y, s, o)`):**
-   - Keeps the iconic **Real Lens 2.5D Geometric DNA** (`1:6.5` ratio, `hipY = -92 + by`, `torsoH = 64`, legs `45 + 45`, arms `32 + 30`, continuous trapezius collar slope, `52x62` capsule head) refined with a clean "Less is More" channel signature:
-   - **Face & Hair:** Side ears with inner-ear shadow crescent, directional cheek/jaw rim-light (`rgba(255,228,196,0.28)`), subtle nose-tip accent ellipse (without long bridge clutter), clean 2-sweep male fringe (`short`) / flowing `long` & `bun` framing, and a soft crown highlight arc (`rgba(255,255,255,0.11)`).
-   - **Signature "Real Lens" Eyes & 3/4 Gaze:** Symmetrical `[-10, 10]` dark round eyes upgraded with a soft upper-eyelid crease arc (`rgba(45,20,14,0.22)`), **dual catchlights** (top-right primary glint + micro bottom-left secondary glint), periodic blinking, and a single subtle under-eye fatigue crescent. When `profile`, `flashlight`, `torch`, or `gazeForward` is enabled, `isSideGaze` automatically shifts into a 3/4 forward gaze (`fx: 7.2`, hides forward ear, foreshortens the far eye with a trailing sclera sliver, aligns pupils along the beam, and moves `sweat` to the trailing temple).
-   - **Torso & Hands:** Neck-to-clavicle shadow, structured collar lapels, subtle chest/waist shirt folds, lit-side rim edge, and contoured fist grip.
-   - Options: `colors` (`{ shirt, shirtHi, shirtSh, pants, pantsSh }` — customize per story protagonist!), `thin`, `dir`, `back`, `profile`, `gazeForward`, `expr` (`'neutral' | 'focus' | 'fear' | 'shock' | 'squint' | 'tired' | 'relief'`), `sweat`, `coldBreath` (Theme B), `shiver` (Theme B), `coverMouth` (Theme C), `tapeArm`, `bag`, `milk`, `flashlight`, `torch`, `wand`, `weaving`, `bundle`, `sinh`, `sash`, `swollenBelly`.
+1. **2-Segment FK Poses & Hip-Pivot Limbs:**
+   - `poseWalk(t, speed, amp)` (`Math.max(0, ...)` clamped knees — prevents inverted-knee bug), `poseStand(t, o)`, `poseFloorSit(t, o)` / `poseSit(t, { floor: true })` (`by: 72` for floor mats/dirt/campfire), `poseSit(t, { curb: true })` (`by: 54` low logs/steps), `poseSit(t, o)` (`by: 34` benches/chairs), `poseSquat(t, o)` (`by: 64`), `poseKneel(t, o)` (`by: 58` — NEVER substitute `poseKneel` for floor sitting), `poseClimb(t, speed)`.
+   - Torso `lean` pivots at `hipY` (no detached waist), and sitting/kneeling arms pass through `clampSitArms()` (pass `rawArms: true` only when raising props).
+2. **Protagonist Rig (`drawPerson(c, x, y, s, o)` — `1:6.5` Ratio):**
+   - `hipY = -92 + by`, `torsoH = 64`, legs `45 + 45`, arms `32 + 30`, continuous trapezius slope, `52x62` capsule head with `cyl()` shading, symmetrical `[-10, 10]` eyes with dual catchlights, periodic blink `(t % 3.7) < 0.12`, under-eye fatigue crescents, and automatic 3/4 side-gaze (`isSideGaze`) when `profile`, `flashlight`, `torch`, or `gazeForward` is enabled.
+   - Always customize `colors: { shirt, shirtHi, shirtSh, pants, pantsSh }` per episode! Supports `female`, `hairStyle: 'short'|'long'|'bun'`, `sinh`, `sash`, `swollenBelly`, `bundle`, `torch`, `wand`, `weaving`, `flashlight`, `coldBreath`, `shiver`, `coverMouth`.
 3. **Entity Rig (`drawEntity(c, x, y, s, o)` & `drawJanitor`):**
-   - Enforces strict Z-index layering (`suitSh` far arm → prop → torso → `suitHi` near arm) so gripped props never render over the front forearm, with seamless `limbContour2()` limbs, **sunken eye-socket shadow halos**, subtle cold moonlight rim-light along head/torso, and eerie pinpoint socket glares.
-   - `drawEntity()` defaults to **no mop (`prop: 'none'`) and no cap (`cap: false`)** so every story's antagonist looks distinct (only `drawJanitor()` enables mop/cap by default). Configurable `suit`, `suitHi`, `suitSh`, `skin`, `cap`, `prop: 'none' | 'mop'`, `reveal`, `bloodSlits`, `eyeColor`.
+   - Strict Z-index order: `suitSh` far arm → prop → torso → `suitHi` near arm.
+   - `drawEntity()` defaults to `prop: 'none'` and `cap: false` so every threat matches its lore (only `drawJanitor()` enables mop/cap).
 4. **Macro POV Forearm (`hand(c, x, y, ang, s, o)`):**
-   - Strictly `400px` long (`rr(c, -26, 0, 52, 400, 22)`) extending off the canvas edge (`y = 760..820`), with subtle ambient forearm contour, lit-side rim highlight, wrist tendon lines, and finger knuckle creases; supporting `sleeve`, `sleeveColor`, `watch`, `wand`, `marker`, `tape`, `flashlight`, `knife`, `radio`.
-   - Always pair writing/taping macro scenes with `ctx.clip()` synchronized to `penX`/`tapeX` for zero ghosting.
-5. **Multi-Environment Stage Builders (Architectural Ink & Rim-Edge Line-Art Signature) & Post-Processing:**
-   - `corridor(c, t, o)` (1-pt 3D tunnel with dual-tone architectural ink + specular rim lines on baseboards, dado rails, ceiling cornices, and pilasters, plus recessed wall panel frames (`กรอบลูกฟักผนัง`), overhead ceiling conduit pipes, perspective floor tile bevels, volumetric trapezoid light cones with drifting dust motes, and specular floor streaks; supports `LIT`, `DARK`, `PK`, or custom palette; plain line-art walls by default unless `mallShops: true`),
-   - `outdoorStage(c, t, o)` (open horizon with twinkling night stars, rim-lit cloud wisps (`clouds !== false`), sagging overhead sky wires (`wires !== false`), 2-layer parallax mountain/treeline ridges with crisp moonlit crest rims + organic foliage tufts, atmospheric horizon mist + stylized mist ribbons, and rim-lit swaying foreground corner reeds unless `foreground: false`),
-   - `roomCorner(c, o)` (2-point asymmetric interior with dual-line architectural trim + rim highlights on corner junction, sloped baseboards, crown molding, chair rail, framed recessed wainscoting panels (`กรอบบัวผนังลูกฟัก`), perspective wood-plank floor bevels, vertical corner AO gradients, and diagonal slat light shafts with dust motes unless `lightShaft: false`),
-   - `topDownRoom(c, o)` (bird's-eye tactical blueprint with 45° diagonal perimeter wall hatching, crisp inner/outer casing rim lines, 3D inner wall drop-shadows, floor tile cross-ticks, structural corner posts, and doorway threshold swing-arc blueprint lines unless `door: false`),
-   - `cctvOverlay(c, t, o)` (CRT scanlines, drifting phosphor sweep bar, center optical reticle ticks, viewfinder brackets, blinking `REC` dot, and live `TC` timecode readout),
-   - **Rural Thai Scene Builders:** `drawStiltHouse(c, t, o)` (raised wooden stilt house with dry earth mound `mound`, `haystack`, `bambooBed`, `underStiltFn` / `entity` seated mid-depth behind stilts, full-height `banana` cluster + `jars`, `ladder`, glowing `windowLight` spill & porch `lantern`, supports `{ x, y, s }`), `drawSugarPalm(c, x, y, s, sway)`, `drawRiceClump(c, x, y, s, t, seed, litWarm)`, `drawBananaCluster(c, x, y, s, t)` (2-stem cluster with wind-torn notched leaves), and `drawDikeGrass(c, x, y, s, seed, warm)`,
-   - Post/FX utilities: `blurLayer(c, px, fn, extra)`, `flick(i, t, rate)`, `glow(c, x, y, r, col, a)`, `vignette(c, k, inner, col)`, `darken(c, a, col)`, `emergency(c, x, y, r, a)`, `frostOverlay(c, intensity, t)`, `grain(c, t, a)`.
-6. **HUD & Subtitles:**
-   - `normalizeCard(s)`, `drawCard(c, card, lt, dur)`, `drawFlow(c, card, lt)`, `drawTele(c, s, lt)`, `drawChapter(c, ch, lt)`, `drawSub(c, s, lt)` (reads `{ t0, t1, text }` and clamps `SHORTS_MODE` safely).
+   - Strictly `400px` long anchored off the canvas edge (`y = 760..820`) — never a short floating arm. Pair writing/taping reveals with synchronized `ctx.clip()`. Use ONLY for physical in-world interaction (never pointing `marker` at diagram boards).
+5. **Setting-Native Stage Builders (Optional Tools — NOT a Mandatory Checklist):**
+   - `outdoorStage(c, t, { skyTop, skyBot, groundCol, horizonY, water, ridgeH })` + **Rural Thai Builders:** `drawStiltHouse(c, t, o)`, `drawSugarPalm(c, x, y, s, sway)`, `drawRiceClump(c, x, y, s, t, seed, litWarm)`, `drawBananaCluster(c, x, y, s, t)`, `drawDikeGrass(c, x, y, s, seed, warm)`.
+   - `roomCorner(c, { cornerX, topY, botY })` — strictly for enclosed interiors (never force outdoor witnesses into `roomCorner()`).
+   - `topDownRoom(c, { x, y, w, h, grid })` — strictly for walled interiors (never for forests/camps).
+   - `cctvOverlay(c, t, { camLabel })` — only for security/trailcam/optical feeds.
+   - `corridor(c, t, o)` — tunnels/hallways (`mallShops: true` only in malls; vary `camH`, `vx`, `vy`).
+   - Post/FX: `cameraRig(c, lt, dur, o, fn)`, `blurLayer(c, px, fn, extra)`, `flick()`, `glow()`, `vignette()`, `darken()`, `emergency()`, `frostOverlay()`, `grain()`.
+6. **Canonical Signatures (Anti-Distortion):**
+   - `prog(t, startA, endB)` takes `(t, start, end)` — **NOT** `(t, start, duration)`.
+   - `txt(c, s, x, y, numericSize, col, weight, align, base)` takes numeric `size` — **NOT** CSS font strings.
 
 ---
 
-## 5. Story-Driven Camera Direction & All-Scene Visual Audit
+## 5. Camera Pitch Diversity & Anti-Template Rules
 
-- **Never clone previous episodes (`views.js` / `episode.js`):** Never read or copy beat progressions, props (`tiles`, `C-13`, `fittingRoom`, `31 Feb`, recurring blanket-limb ECU cold opens/finales, elder-on-bench `roomCorner()` interviews, or vertical `W/2` red-line split screens) from past stories.
-- **Stage builders are optional, never a 7-item checklist:** Use `topDownRoom()` and `roomCorner()` **only** for enclosed rooms with real walls (never in forest camps or open nature), and stage `hand()` strictly on real physical objects inside the live world (**no centered diagram mats `rr(c, 120, 70, ...)` with dashed `setLineDash` arrows and `marker` pointing**).
-- **Vertical Pitch & Horizon Diversity:** Avoid leaving 80% of scenes at flat eye-level (`horizonY = 410..460`). Vary across **Worm's-Eye (`horizonY = 550..640`)**, **High Steep Down-Angle (`horizonY = 120..220`)**, **3-Plane Foreground Occlusion** (bamboo/stilts/foliage framing), **Dutch Angles**, and Macro POV, using setting-native geometry (`outdoorStage()`, Rural Thai Builders, etc.).
-
-Before rendering any MP4, always generate and visually inspect the full-scene contact sheet:
-```bash
-node audit_all_scenes.js
-```
-Open `audit_all_scenes.png` with `read_file` to verify zero fallback views, zero distorted faces, zero severed arms, zero dark/black frames, zero disguised diagram boards, and zero HUD text clipping.
+Never clone past episodes or leave 80% of scenes at flat eye-level (`horizonY = 410..460`). Explicitly cycle vertical pitch alongside `cameraRig()` and keep frames moving (`<= 3s` static max):
+1. **Worm's-Eye / Low Ground Pitch (`horizonY = 550..640`):** Looking steeply upward from mud/roots/under-stilts.
+2. **High Steep Down-Angle (`horizonY = 120..220`):** Looking down from treetops, stilt decks, or ridges.
+3. **3-Plane Foreground Occlusion POV (Preferred over `W/2` Red Split-Screen):** Shoot past dark foreground silhouettes (bamboo, timber stilts, window slats, banana leaves) into mid/background depth.
+4. **Dutch Angle Tilt (`c.rotate(±0.05..0.08)`):** Subtle horizon roll during dread or sudden discovery beats.
+5. **Pre-Render Audit:** Always run `node audit_all_scenes.js` (checks Narration QA + renders `audit_all_scenes.png`) and visually inspect `audit_all_scenes.png` via `read_file` before MP4 render.

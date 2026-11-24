@@ -23,7 +23,12 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
-const ffmpeg = require('ffmpeg-static');
+let ffmpeg = 'ffmpeg';
+try {
+  ffmpeg = require('ffmpeg-static') || 'ffmpeg';
+} catch (_) {
+  ffmpeg = 'ffmpeg';
+}
 let episode = {};
 try {
   episode = require('./episode');
@@ -32,15 +37,30 @@ try {
 }
 
 const { SCENES = [], TITLE = '', SUBTITLE = '' } = episode;
+const HUD_MODE = episode.HUD_MODE || episode.hudMode || 'survival';
+const NARRATIVE_MODE = episode.NARRATIVE_MODE || episode.narrativeMode || (HUD_MODE === 'documentary' ? 'documentary' : 'survival');
 const SR = 44100;
 const VOICE_SR = 24000;
 const TARGET_LUFS = -18.0;
 const LEAD = 0.20;
 const COLD_OPEN_LEAD = 0.06;
-const DEFAULT_PAD = 0.28;
+
+function resolveTailSilenceMs() {
+  const idx = process.argv.indexOf('--tail-silence-ms');
+  const cliVal = idx !== -1 && process.argv[idx + 1] ? Number(process.argv[idx + 1]) : NaN;
+  const epVal = Number(episode.TRAILING_SILENCE_MS ?? episode.trailingSilenceMs);
+  const chosen = Number.isFinite(cliVal) ? cliVal : (Number.isFinite(epVal) ? epVal : 420);
+  // Keep within 350–500 ms sweet spot (allow 0 only if explicitly forced via negative/zero override? Keep >= 350ms safety floor)
+  return Math.max(350, Math.min(500, Math.round(chosen)));
+}
+
+const TRAILING_SILENCE_MS = resolveTailSilenceMs();
+const DEFAULT_PAD = Math.max(0.42, +(TRAILING_SILENCE_MS / 1000).toFixed(3));
 const AUDIO = path.join(__dirname, 'audio');
 const CACHE_DIR = path.join(AUDIO, 'cache');
-fs.mkdirSync(CACHE_DIR, { recursive: true });
+if (require.main === module) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
 
 // Load .env if present (without extra dependencies)
 function loadDotEnv() {
@@ -390,6 +410,13 @@ function resolveVoiceProfile(seg = {}, scene = {}) {
   };
 }
 
+function getSceneRawText(scene) {
+  if (!scene || typeof scene !== 'object') return '';
+  if (typeof scene.narration === 'string' && scene.narration.trim()) return scene.narration;
+  if (typeof scene.vo === 'string') return scene.vo;
+  return '';
+}
+
 function stripInlineMarkup(text) {
   return String(text || '').replace(
     /\[\[(?:char|character|impersonate|mimic|narrator)(?::[^|\]]*)?\|([\s\S]*?)\]\]/gi,
@@ -399,10 +426,11 @@ function stripInlineMarkup(text) {
 
 function stripVoMarkupForSubs(sceneOrText) {
   if (sceneOrText && typeof sceneOrText === 'object') {
-    if (Array.isArray(sceneOrText.voSegments) && sceneOrText.voSegments.length > 0 && !sceneOrText.vo) {
+    const rawDirect = getSceneRawText(sceneOrText);
+    if (Array.isArray(sceneOrText.voSegments) && sceneOrText.voSegments.length > 0 && !rawDirect) {
       return sceneOrText.voSegments.map(s => stripInlineMarkup(s.text || '')).join(' ').replace(/\s+/g, ' ').trim();
     }
-    return stripInlineMarkup(sceneOrText.vo || '').replace(/\s+/g, ' ').trim();
+    return stripInlineMarkup(rawDirect).replace(/\s+/g, ' ').trim();
   }
   return stripInlineMarkup(sceneOrText || '').replace(/\s+/g, ' ').trim();
 }
@@ -425,32 +453,66 @@ function sanitizeVoForTTS(text, role = 'narrator') {
     .trim();
 }
 
-const DEFAULT_PRONUNCIATION_MAP = {
-  '7-Eleven': 'เซเว่นอีเลฟเว่น',
-  '7-11': 'เซเว่นอีเลฟเว่น',
-  'Wi-Fi': 'ไวไฟ',
-  WiFi: 'ไวไฟ',
+// ----------------------------------------------------------------- PRONUNCIATION_MAP
+// Loads the full curated Thai Folk Horror, Medical, Science & Isan TTS dictionary from
+// `pronunciation_map.js` (single source of truth), merged with optional `pronunciation_map.json`
+// and `episode.PRONUNCIATION_MAP`. Applied ONLY before sending text to Gemini TTS — NEVER alters subtitles.
+let externalPronMod = null;
+for (const cand of [
+  path.join(__dirname, 'pronunciation_map.js'),
+  path.join(__dirname, '..', 'templates', 'pronunciation_map.js')
+]) {
+  if (fs.existsSync(cand)) {
+    try { externalPronMod = require(cand); break; } catch (_) {}
+  }
+}
+
+const FALLBACK_DEFAULT_PRONUNCIATION_MAP = {
+  'Brugada Syndrome': 'บรูกาด้า ซินโดรม',
+  Brugada: 'บรูกาด้า',
+  SUNDS: 'ซันด์ส',
+  'นักมานุษยวิทยา': 'นัก-มะ-นุด-สะ-ยะ-วิด-ทะ-ยา',
+  'มานุษยวิทยา': 'มะ-นุด-สะ-ยะ-วิด-ทะ-ยา',
+  'มลาบรี': 'มะ-ลา-บรี',
+  'หนามพุทรา': 'หนาม-พุด-ซา',
+  'ใบหนาด': 'ใบ-หนาด',
+  'ชะตากรรม': 'ชะ-ตา-กำ',
   LINE: 'ไลน์',
   CCTV: 'ซีซีทีวี',
   GPS: 'จีพีเอส',
-  ATM: 'เอทีเอ็ม',
-  OTP: 'โอทีพี',
-  VIP: 'วีไอพี',
-  KPI: 'เคพีไอ',
-  LED: 'แอลอีดี',
-  USB: 'ยูเอสบี',
-  QR: 'คิวอาร์',
-  AI: 'เอไอ',
-  BTS: 'บีทีเอส',
-  MRT: 'เอ็มอาร์ที',
-  SMS: 'เอสเอ็มเอส',
-  PDF: 'พีดีเอฟ',
-  EP: 'อีพี',
-  HUD: 'ฮัด',
-  POV: 'พีโอวี',
-  OTS: 'โอทีเอส',
-  FPS: 'เฟรมต่อวินาที'
+  AI: 'เอไอ'
 };
+
+const DEFAULT_PRONUNCIATION_MAP = externalPronMod && externalPronMod.PRONUNCIATION_MAP
+  ? { ...externalPronMod.PRONUNCIATION_MAP }
+  : { ...FALLBACK_DEFAULT_PRONUNCIATION_MAP };
+
+function loadPronunciationMap(extraMap = null, projectDir = __dirname) {
+  const merged = { ...DEFAULT_PRONUNCIATION_MAP };
+  const localJsMap = path.join(projectDir, 'pronunciation_map.js');
+  if (localJsMap !== path.join(__dirname, 'pronunciation_map.js') && fs.existsSync(localJsMap)) {
+    try {
+      const m = require(localJsMap);
+      if (m && m.PRONUNCIATION_MAP) Object.assign(merged, m.PRONUNCIATION_MAP);
+    } catch (_) {}
+  }
+  const jsonMapPath = path.join(projectDir, 'pronunciation_map.json');
+  if (fs.existsSync(jsonMapPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(jsonMapPath, 'utf8'));
+      if (parsed && typeof parsed === 'object') Object.assign(merged, parsed);
+    } catch (_) {}
+  }
+  if (episode && episode.PRONUNCIATION_MAP && typeof episode.PRONUNCIATION_MAP === 'object') {
+    Object.assign(merged, episode.PRONUNCIATION_MAP);
+  }
+  if (extraMap && typeof extraMap === 'object') {
+    Object.assign(merged, extraMap);
+  }
+  return merged;
+}
+
+const PRONUNCIATION_MAP = loadPronunciationMap();
 
 const THAI_DIGITS = ['ศูนย์', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
 const THAI_SCALES = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน'];
@@ -511,29 +573,37 @@ function numberToThaiWords(numStr) {
 }
 
 function applyPronunciationEntry(text, key, val) {
+  if (externalPronMod && typeof externalPronMod.applyPronunciationEntry === 'function') {
+    return externalPronMod.applyPronunciationEntry(text, key, val);
+  }
   if (!key || val === undefined || val === null) return text;
   const regexLiteral = key.match(/^\/(.+)\/([gimsuy]*)$/);
   if (regexLiteral) {
     return text.replace(new RegExp(regexLiteral[1], regexLiteral[2] || 'g'), String(val));
   }
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (/^[A-Za-z0-9_-]+$/.test(key)) {
+  if (/^[A-Za-z0-9_'\-\s]+$/.test(key)) {
     return text.replace(new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, 'gi'), String(val));
   }
   return text.replace(new RegExp(escaped, 'g'), String(val));
+}
+
+function applyPronunciationMap(text, customMap = {}) {
+  const merged = loadPronunciationMap(customMap);
+  const keys = Object.keys(merged).sort((a, b) => b.length - a.length);
+  let result = String(text || '');
+  for (const key of keys) {
+    result = applyPronunciationEntry(result, key, merged[key]);
+  }
+  return result;
 }
 
 function normalizeThaiForTTS(text, role = 'narrator', extraMap = null) {
   let out = stripInlineMarkup(text);
   if (!out.trim()) return '';
 
-  const customMap = { ...(episode && episode.PRONUNCIATION_MAP ? episode.PRONUNCIATION_MAP : {}), ...(extraMap || {}) };
-  for (const [k, v] of Object.entries(customMap)) {
-    out = applyPronunciationEntry(out, k, v);
-  }
-  for (const [k, v] of Object.entries(DEFAULT_PRONUNCIATION_MAP)) {
-    out = applyPronunciationEntry(out, k, v);
-  }
+  // Apply merged PRONUNCIATION_MAP (pronunciation_map.js + pronunciation_map.json + episode.PRONUNCIATION_MAP + extraMap)
+  out = applyPronunciationMap(out, extraMap || {});
 
   // Expand Thai time notation (e.g. 03:14 น., 17:59 น., เวลา 08:30)
   out = out.replace(/(^|[\s(])([01]?\d|2[0-3]):([0-5]\d)\s*(?:น\.(?:\s*า)?|นาฬิกา)?(?=$|[\s),.!?؟…])/g, (_, pre, hh, mm) => {
@@ -542,8 +612,10 @@ function normalizeThaiForTTS(text, role = 'narrator', extraMap = null) {
     return `${pre}${hWord}นาฬิกา${mNum > 0 ? ' ' + intToThaiWords(mNum) + 'นาที' : ''} `;
   });
 
-  // Expand common Thai abbreviations
+  // Expand common Thai historical/documentary abbreviations
   out = out
+    .replace(/(?<![\u0E00-\u0E7FA-Za-z])พ\.ศ\.\s*/g, ' พุทธศักราช ')
+    .replace(/(?<![\u0E00-\u0E7FA-Za-z])ค\.ศ\.\s*/g, ' คริสต์ศักราช ')
     .replace(/(?<![\u0E00-\u0E7FA-Za-z])กทม\.?/g, ' กรุงเทพมหานคร ')
     .replace(/(?<![\u0E00-\u0E7FA-Za-z])รพ\./g, ' โรงพยาบาล ')
     .replace(/ฯลฯ/g, ' และอื่นๆ ');
@@ -641,6 +713,36 @@ function trimWithRate(pcm, sampleRate = VOICE_SR) {
   a = Math.max(0, a - Math.floor(0.03 * sampleRate));
   b = Math.min(pcm.length - 1, b + Math.floor(0.08 * sampleRate));
   return pcm.slice(a, Math.max(a, b));
+}
+
+function appendTrailingSilence(pcm, silenceMs = TRAILING_SILENCE_MS, sampleRate = VOICE_SR) {
+  if (!pcm || pcm.length === 0) return new Float32Array(0);
+  const padSamples = Math.max(0, Math.round((Math.max(0, silenceMs) / 1000) * sampleRate));
+  const out = new Float32Array(pcm.length + padSamples);
+  out.set(pcm, 0);
+  // Apply subtle 12 ms micro fade-out on the last active samples to prevent click/pop before silent tail
+  const fadeSamples = Math.min(pcm.length, Math.max(1, Math.round(0.012 * sampleRate)));
+  const fadeStart = pcm.length - fadeSamples;
+  for (let i = 0; i < fadeSamples; i++) {
+    out[fadeStart + i] *= (1 - (i + 1) / fadeSamples);
+  }
+  return out;
+}
+
+function measureTrailingSilenceMs(pcm, sampleRate = VOICE_SR, thresh = 0.008) {
+  if (!pcm || pcm.length === 0) return 0;
+  let endIdx = pcm.length - 1;
+  while (endIdx > 0 && Math.abs(pcm[endIdx]) < thresh) endIdx--;
+  const silentSamples = Math.max(0, (pcm.length - 1) - endIdx);
+  return (silentSamples / sampleRate) * 1000;
+}
+
+function applyTrailingSilenceToWav(wavPath, silenceMs = TRAILING_SILENCE_MS, sampleRate = VOICE_SR) {
+  if (!wavPath || !fs.existsSync(wavPath)) return;
+  const decoded = decode(wavPath, sampleRate);
+  const trimmed = trimWithRate(decoded, sampleRate);
+  const padded = appendTrailingSilence(trimmed, silenceMs, sampleRate);
+  writeMonoWav(wavPath, padded, sampleRate);
 }
 
 function inspectVoClipClarity(pcm, expectedText, sampleRate = VOICE_SR, opts = {}) {
@@ -786,6 +888,16 @@ function inspectVoClipClarity(pcm, expectedText, sampleRate = VOICE_SR, opts = {
     score -= 20;
     issues.push({ code: 'CLIPPING_DISTORTION', detail: `Audio clipping ${(clippingRatio * 100).toFixed(2)}% > 0.5%` });
   }
+  // Detect abrupt cutoff right at the end of the raw audio buffer before trailing silence padding
+  const rawTailWin = Math.min(pcm.length, Math.max(1, Math.floor(0.04 * sampleRate)));
+  let rawTailSq = 0;
+  for (let i = pcm.length - rawTailWin; i < pcm.length; i++) rawTailSq += pcm[i] * pcm[i];
+  const rawTailEndRms = Math.sqrt(rawTailSq / rawTailWin);
+  const trailingSilenceMs = measureTrailingSilenceMs(pcm, sampleRate);
+  if (durSec >= 0.8 && rawTailEndRms > 0.045 && trailingSilenceMs < 25) {
+    score -= 20;
+    issues.push({ code: 'ABRUPT_TAIL_CUT', detail: `Abrupt audio cutoff at end of clip (tail RMS ${rawTailEndRms.toFixed(3)}, trailing silence ${trailingSilenceMs.toFixed(0)}ms)` });
+  }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
   const status = score < 70 ? 'FAIL' : (score < 82 ? 'WARN' : 'PASS');
@@ -801,6 +913,7 @@ function inspectVoClipClarity(pcm, expectedText, sampleRate = VOICE_SR, opts = {
     vadRatio: +vadRatio.toFixed(3),
     maxSilenceGapSec: +maxSilenceGapSec.toFixed(3),
     tailDropDb: +tailDropDb.toFixed(2),
+    trailingSilenceMs: +trailingSilenceMs.toFixed(1),
     zcr: +zcr.toFixed(4),
     clippingRatio: +clippingRatio.toFixed(5),
     issues
@@ -953,7 +1066,7 @@ function parseSceneVoSegments(scene = {}) {
       .filter(seg => seg && String(seg.text || '').trim())
       .map(seg => ({ ...seg, text: String(seg.text) }));
   }
-  const raw = String(scene.vo || '').trim();
+  const raw = getSceneRawText(scene).trim();
   if (!raw) return [];
   if (/\[\[(?:char|character|impersonate|mimic|narrator)(?::[^|\]]*)?\|/i.test(raw)) {
     return parseInlineTaggedVo(raw, scene);
@@ -1243,6 +1356,7 @@ async function synthesizeScene(scene, idx) {
   if (prepared.length === 1) {
     const { profile, rawSegText } = prepared[0];
     const r = await synthesizeSegmentVerified(scene.id, '', rawSegText, profile, normWav, idx);
+    applyTrailingSilenceToWav(normWav, TRAILING_SILENCE_MS, VOICE_SR);
     return { normWav, cached: r.cached, model: r.model, profile, clarity: r.clarity, asr: r.asr, phoneticText: r.phoneticText };
   }
 
@@ -1262,6 +1376,7 @@ async function synthesizeScene(scene, idx) {
   concatNormWavsWithGap(segNormWavs, normWav, 0.10, VOICE_SR);
   const fullExpected = prepared.map(p => p.phoneticText).join(' ');
   const combinedClarity = inspectVoClipClarity(decode(normWav, VOICE_SR), fullExpected, VOICE_SR);
+  applyTrailingSilenceToWav(normWav, TRAILING_SILENCE_MS, VOICE_SR);
   return { normWav, cached: allCached, model: usedModel, segments: prepared.length, clarity: combinedClarity, segReports, phoneticText: fullExpected };
 }
 
@@ -1494,11 +1609,19 @@ async function main() {
     return;
   }
 
-  console.log(`=== Audio Pipeline: "${TITLE}" — ${SCENES.length} scenes (Voice: ${VOICE_NAME}, Strict Narrator Lock + Pronunciation QA) ===`);
+  console.log(`=== Audio Pipeline: "${TITLE}" — ${SCENES.length} scenes (Voice: ${VOICE_NAME}, Mode: ${NARRATIVE_MODE}/${HUD_MODE}, TailPad: ${TRAILING_SILENCE_MS}ms) ===`);
   const voPcm = new Array(SCENES.length);
+  const voActiveDur = new Array(SCENES.length).fill(0);
   const results = new Array(SCENES.length);
   const concurrency = Math.max(1, Math.min(API_KEYS.length || 1, 3));
   let nextIdx = 0;
+
+  function loadSceneVoPcm(normWav) {
+    if (!normWav) return { pcm: new Float32Array(0), activeDur: 0 };
+    const active = trim(decode(normWav));
+    const activeDur = active.length / SR;
+    return { pcm: appendTrailingSilence(active, TRAILING_SILENCE_MS, SR), activeDur };
+  }
 
   while (nextIdx < SCENES.length) {
     const i = nextIdx++;
@@ -1507,7 +1630,9 @@ async function main() {
     results[i] = r;
     const clarityTag = r.clarity ? ` | clarity ${r.clarity.score}/100 (${r.clarity.status})` : '';
     console.log(`[${i + 1}/${SCENES.length}] ${s.id} ${r.cached ? '(cache)' : `(generated ${r.model}, locked)`}${clarityTag}`);
-    voPcm[i] = r.normWav ? trim(decode(r.normWav)) : new Float32Array(0);
+    const loaded = loadSceneVoPcm(r.normWav);
+    voPcm[i] = loaded.pcm;
+    voActiveDur[i] = loaded.activeDur;
     if (!r.cached) {
       await new Promise(res => setTimeout(res, 600));
       break;
@@ -1524,11 +1649,29 @@ async function main() {
       results[i] = r;
       const clarityTag = r.clarity ? ` | clarity ${r.clarity.score}/100 (${r.clarity.status})` : '';
       console.log(`[${i + 1}/${SCENES.length}] ${s.id} ${r.cached ? '(cache)' : `(generated ${r.model})`}${clarityTag}`);
-      voPcm[i] = r.normWav ? trim(decode(r.normWav)) : new Float32Array(0);
+      const loaded = loadSceneVoPcm(r.normWav);
+      voPcm[i] = loaded.pcm;
+      voActiveDur[i] = loaded.activeDur;
       if (!r.cached) await new Promise(res => setTimeout(res, 800));
     }
   }
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  // Optional: synthesize 3-4s Related Video Bridge CTA voiceover for Cliffhanger Shorts
+  const bridgeCtaVo = String(episode.SHORTS_BRIDGE_CTA_VO || episode.shortsBridgeCtaVo || '').trim();
+  let bridgeCtaAudioFile = null;
+  if (bridgeCtaVo) {
+    try {
+      const ctaWav = path.join(AUDIO, 'shorts_bridge_cta.wav');
+      const narratorProfile = resolveVoiceProfile({ role: 'narrator' }, {});
+      await synthesizeSegmentVerified('shorts_bridge_cta', '', bridgeCtaVo, narratorProfile, ctaWav, SCENES.length + 1);
+      applyTrailingSilenceToWav(ctaWav, TRAILING_SILENCE_MS, VOICE_SR);
+      bridgeCtaAudioFile = 'audio/shorts_bridge_cta.wav';
+      console.log(`✓ Synthesized Shorts Bridge CTA VO -> ${bridgeCtaAudioFile}`);
+    } catch (e) {
+      console.warn(`  [Shorts Bridge CTA VO warn] ${e.message.slice(0, 140)}`);
+    }
+  }
 
   const reportEntries = [];
   SCENES.forEach((s, i) => {
@@ -1548,12 +1691,14 @@ async function main() {
 
   let t = 0;
   let prevAct = null;
+  const tailSilenceSec = TRAILING_SILENCE_MS / 1000;
   const timeline = SCENES.map((s, i) => {
     const lead = getSceneLead(s, i, prevAct);
     prevAct = s.act != null ? s.act : prevAct;
-    const voDur = voPcm[i].length / SR;
-    const pad = s.pad !== undefined ? s.pad : DEFAULT_PAD;
-    const dur = (voDur > 0 ? lead + voDur : 0) + pad;
+    const voDur = voActiveDur[i];
+    const reqPad = s.pad !== undefined ? Number(s.pad) : DEFAULT_PAD;
+    const effectivePad = voDur > 0 ? Math.max(reqPad, tailSilenceSec) : reqPad;
+    const dur = (voDur > 0 ? lead + voDur : 0) + effectivePad;
     const cleanVo = stripVoMarkupForSubs(s);
     const chunks = chunkSubs(cleanVo);
     const totalChars = chunks.reduce((a, c) => a + c.length, 0) || 1;
@@ -1564,7 +1709,17 @@ async function main() {
       const b = lead + voDur * acc / totalChars;
       return { t0: +a.toFixed(3), t1: +(b + 0.14).toFixed(3), text: c };
     });
-    const entry = { ...s, vo: cleanVo, start: +t.toFixed(3), dur: +dur.toFixed(3), voStart: lead, voDur: +voDur.toFixed(3), subs };
+    const entry = {
+      ...s,
+      narration: cleanVo,
+      vo: cleanVo,
+      start: +t.toFixed(3),
+      dur: +dur.toFixed(3),
+      voStart: lead,
+      voDur: +voDur.toFixed(3),
+      trailingSilenceMs: voDur > 0 ? TRAILING_SILENCE_MS : 0,
+      subs
+    };
     t += dur;
     return entry;
   });
@@ -1611,7 +1766,17 @@ async function main() {
   execFileSync(ffmpeg, ['-y', '-v', 'error', '-i', finalMaster, '-c:a', 'libmp3lame', '-b:a', '192k', path.join(AUDIO, 'master.mp3')]);
   try { fs.unlinkSync(rawMaster); } catch (_) {}
 
-  const data = { title: TITLE, subtitle: SUBTITLE, total: +totalSec.toFixed(3), scenes: timeline };
+  const data = {
+    title: TITLE,
+    subtitle: SUBTITLE,
+    narrativeMode: NARRATIVE_MODE,
+    hudMode: HUD_MODE,
+    trailingSilenceMs: TRAILING_SILENCE_MS,
+    ...(bridgeCtaAudioFile ? { shortsBridgeCtaAudio: bridgeCtaAudioFile } : {}),
+    ...(bridgeCtaVo ? { shortsBridgeCtaVo: bridgeCtaVo } : {}),
+    total: +totalSec.toFixed(3),
+    scenes: timeline
+  };
   fs.writeFileSync(path.join(__dirname, 'timeline.json'), JSON.stringify(data, null, 2));
   fs.writeFileSync(path.join(__dirname, 'timeline.js'), 'window.TIMELINE = ' + JSON.stringify(data) + ';\n');
   console.log('✅ Wrote audio/master.wav, audio/master.mp3, timeline.json, timeline.js');
@@ -1625,9 +1790,16 @@ module.exports = {
   VOICE_NAME,
   UNIFIED_STYLE,
   NARRATOR_STYLE,
+  HUD_MODE,
+  NARRATIVE_MODE,
+  TRAILING_SILENCE_MS,
   DEFAULT_CHARACTER_VOICES,
   DEFAULT_PRONUNCIATION_MAP,
-  IMPERSONATION_PRESETS,
+  PRONUNCIATION_MAP,
+  loadPronunciationMap,
+  applyPronunciationEntry,
+  applyPronunciationMap,
+  getSceneRawText,
   getCharacterVoiceMap,
   resolveVoiceProfile,
   sanitizeVoForTTS,
@@ -1636,6 +1808,9 @@ module.exports = {
   normalizeThaiForTTS,
   buildClearerRetryText,
   thaiTextSimilarity,
+  appendTrailingSilence,
+  measureTrailingSilenceMs,
+  applyTrailingSilenceToWav,
   inspectVoClipClarity,
   verifyClipWithGeminiASR,
   stripInlineMarkup,

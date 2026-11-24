@@ -58,6 +58,19 @@ function applyShortsRigComp(c) {
 function endShortsRigComp(applied) {
   if (applied) _inShortsRig = false;
 }
+function getRenderScale() {
+  if (_inShortsWorld || isShortsMode()) return 1;
+  if (typeof window !== 'undefined' && typeof window.__RENDER_SCALE === 'number' && window.__RENDER_SCALE > 0) {
+    return window.__RENDER_SCALE;
+  }
+  return 1;
+}
+function ensureOffscreenSize(cv, rs = 1) {
+  if (!cv) return false;
+  const tw = Math.round(W * rs), th = Math.round(H * rs);
+  if (cv.width !== tw || cv.height !== th) { cv.width = tw; cv.height = th; }
+  return true;
+}
 
 function hex2rgb(h) { h = h.replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
 function mix(a, b, k) { const A = hex2rgb(a), B = hex2rgb(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], clamp(k)))).join(',')})`; }
@@ -102,19 +115,60 @@ function glow(c, x, y, r, col, a) {
   c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
 }
 
-// Offscreen Gaussian blur buffer (depth-of-field & HUD rack-focus)
+// Offscreen Gaussian blur buffer (depth-of-field & HUD rack-focus) + static LRU cache
 const _tmp = typeof document !== 'undefined' ? document.createElement('canvas') : null;
 if (_tmp) { _tmp.width = W; _tmp.height = H; }
 const _tc = _tmp ? _tmp.getContext('2d') : null;
-function blurLayer(c, px, fn, extra = '') {
+const _blurCache = new Map();
+const _BLUR_CACHE_MAX = 8;
+function clearBlurCache() { _blurCache.clear(); }
+function blurLayer(c, px, fn, extra = '', cacheKey = null) {
   if (!_tc) { fn(c); return; }
-  const wasShortsWorld = _inShortsWorld;
-  _inShortsWorld = false;
-  _tc.setTransform(1, 0, 0, 1, 0, 0); _tc.clearRect(0, 0, W, H); fn(_tc);
-  _inShortsWorld = wasShortsWorld;
+  const rs = getRenderScale();
+  const tw = Math.round(W * rs), th = Math.round(H * rs);
+  const filterStr = `blur(${(px * rs).toFixed(2)}px)${extra ? ' ' + extra : ''}`;
+
+  if (typeof cacheKey === 'string' && cacheKey.length > 0 && typeof document !== 'undefined') {
+    const fullKey = `${cacheKey}|${px}|${extra}|${tw}x${th}|${_inShortsWorld ? 1 : 0}`;
+    if (_blurCache.has(fullKey)) {
+      const hitCv = _blurCache.get(fullKey);
+      _blurCache.delete(fullKey);
+      _blurCache.set(fullKey, hitCv);
+      c.save(); c.drawImage(hitCv, 0, 0, W, H); c.restore();
+      return;
+    }
+    if (_blurCache.size >= _BLUR_CACHE_MAX) {
+      const oldestKey = _blurCache.keys().next().value;
+      _blurCache.delete(oldestKey);
+    }
+    ensureOffscreenSize(_tmp, rs);
+    const wasShortsRig = _inShortsRig;
+    _inShortsRig = false;
+    try {
+      _tc.setTransform(rs, 0, 0, rs, 0, 0); _tc.clearRect(0, 0, W, H); fn(_tc);
+    } finally {
+      _inShortsRig = wasShortsRig;
+    }
+    const cacheCv = document.createElement('canvas');
+    cacheCv.width = tw; cacheCv.height = th;
+    const cacheCtx = cacheCv.getContext('2d');
+    cacheCtx.filter = filterStr;
+    cacheCtx.drawImage(_tmp, 0, 0);
+    _blurCache.set(fullKey, cacheCv);
+    c.save(); c.drawImage(cacheCv, 0, 0, W, H); c.restore();
+    return;
+  }
+
+  ensureOffscreenSize(_tmp, rs);
+  const wasShortsRig = _inShortsRig;
+  _inShortsRig = false;
+  try {
+    _tc.setTransform(rs, 0, 0, rs, 0, 0); _tc.clearRect(0, 0, W, H); fn(_tc);
+  } finally {
+    _inShortsRig = wasShortsRig;
+  }
   c.save();
-  if (!wasShortsWorld) c.setTransform(1, 0, 0, 1, 0, 0);
-  c.filter = `blur(${px}px) ${extra}`; c.drawImage(_tmp, 0, 0); c.restore();
+  c.filter = filterStr; c.drawImage(_tmp, 0, 0, W, H); c.restore();
 }
 function flick(i, t, rate = 1) {
   const a = hash(i * 13.1 + Math.floor(t * 14 * rate));
@@ -1751,14 +1805,33 @@ if (grainCv) {
 }
 function grain(c, T, a = 0.04) {
   if (!grainCv) return;
+  const gw = isShortsMode() ? SHORTS_W : W, gh = isShortsMode() ? SHORTS_H : H;
   c.save(); c.globalAlpha = a; c.globalCompositeOperation = 'overlay';
   const ox = Math.floor(hash(Math.floor(T * 30)) * 256), oy = Math.floor(hash(Math.floor(T * 30) + 5) * 256);
-  c.translate(-ox, -oy); c.fillStyle = c.createPattern(grainCv, 'repeat'); c.fillRect(0, 0, W + 256, H + 256); c.restore();
+  c.translate(-ox, -oy); c.fillStyle = c.createPattern(grainCv, 'repeat'); c.fillRect(0, 0, gw + 256, gh + 256); c.restore();
 }
 
 // --------------------------------------------------------- HUD CARDS, TELEMETRY & SUBTITLES
 const CREAM = '#F5EFE6', INK = '#1C1917', RED = '#B91C1C';
 const CARD = { bg: CREAM, ink: INK, red: RED, muted: '#57534E' };
+
+function getHudMode(s) {
+  const sceneMode = s && s.hudMode ? String(s.hudMode).toLowerCase() : '';
+  if (sceneMode === 'documentary' || sceneMode === 'survival') return sceneMode;
+  if (typeof window !== 'undefined') {
+    const winMode = window.HUD_MODE ? String(window.HUD_MODE).toLowerCase() : '';
+    if (winMode === 'documentary' || winMode === 'survival') return winMode;
+    const tlMode = window.TIMELINE && window.TIMELINE.hudMode ? String(window.TIMELINE.hudMode).toLowerCase() : '';
+    if (tlMode === 'documentary' || tlMode === 'survival') return tlMode;
+  }
+  return 'survival';
+}
+
+function setHudMode(mode) {
+  if (typeof window !== 'undefined') {
+    window.HUD_MODE = String(mode || 'survival').toLowerCase() === 'documentary' ? 'documentary' : 'survival';
+  }
+}
 
 function badge(c, x, y, s, dark = true) {
   const isHex = typeof dark === 'string';
@@ -1829,7 +1902,9 @@ function normalizeCard(s) {
 
 function drawCard(c, rawCard, lt, sceneDur) {
   // Disabled by default for clean cinematic storytelling (opt-in only if __ENABLE_STORY_HUD === true)
+  // Always disabled when hudMode === 'documentary' (Clean Cinema Mode: zero HUD boxes on screen)
   if (typeof window === 'undefined' || !window.__ENABLE_STORY_HUD || window.__HIDE_HUD) return;
+  if (getHudMode() === 'documentary') return;
   const card = rawCard && !rawCard.pos && !rawCard.head && !rawCard.rows && !rawCard.items && !Array.isArray(rawCard.title)
     ? normalizeCard({ hud: rawCard }) : rawCard;
   if (!card) return;
@@ -1921,6 +1996,7 @@ function drawCard(c, rawCard, lt, sceneDur) {
 
 function drawFlow(c, card, lt) {
   if (typeof window === 'undefined' || !window.__ENABLE_STORY_HUD || window.__HIDE_HUD) return;
+  if (getHudMode() === 'documentary') return;
   const shorts = isShortsMode();
   const cx = shorts ? 485 : 480, top = shorts ? 500 : 110;
   const headSz = fitTextSize(c, card.head, 640, 22, 16, 700);
@@ -1948,9 +2024,10 @@ function drawFlow(c, card, lt) {
   });
 }
 
-// Theme-Agnostic Telemetry Renderer (disabled by default for clean cinematic stories)
+// Theme-Agnostic Telemetry Renderer (disabled by default; strictly disabled in hudMode: "documentary")
 function drawTele(c, s, lt) {
   if (typeof window === 'undefined' || !window.__ENABLE_STORY_TELE || window.__HIDE_HUD) return;
+  if (getHudMode(s) === 'documentary') return;
   const tl = s.tele || s.telemetry; if (!tl) return;
   const shorts = isShortsMode();
   if (shorts && typeof window !== 'undefined' && window.__HIDE_SHORTS_TELE) return;
@@ -2097,9 +2174,11 @@ function drawSub(c, s, lt) {
   c.restore();
 }
 
-// Non-intrusive 2.2s silent Visual CTA inside 9:16 Safe Active Zone (replaces retention-killing cliché outro)
+// Non-intrusive silent Visual CTA / Related Video Bridge pointer inside 9:16 Safe Active Zone
 function drawShortsEndingCTA(c, s, lt, t = 0, totalDur = 0) {
   if (typeof window === 'undefined' || !window.SHORTS_MODE || window.__HIDE_HUD) return;
+  // Yield cleanly when render_all_shorts.js composites dedicated high-res overlay_<tag>_cta.png
+  if (window.__SHORTS_CTA_OVERLAY_ACTIVE) return;
   let remSec = null;
   if (typeof window.__SHORTS_REM_SEC === 'number') {
     remSec = window.__SHORTS_REM_SEC;
@@ -2108,47 +2187,49 @@ function drawShortsEndingCTA(c, s, lt, t = 0, totalDur = 0) {
   } else if (totalDur > 0) {
     remSec = Math.max(0, totalDur - t);
   }
-  if (remSec === null || remSec > 2.25 || remSec < 0.04) return;
+  const ctaWindow = window.__SHORTS_IN_BRIDGE ? 3.8 : 2.25;
+  if (remSec === null || remSec > ctaWindow || remSec < 0.04) return;
 
-  const elapsed = 2.25 - remSec;
+  const elapsed = ctaWindow - remSec;
   const a = clamp(prog(elapsed, 0, 0.25)) * clamp(remSec / 0.12);
   if (a <= 0.02) return;
 
-  const isFollow = window.__SHORTS_IS_FINAL === false;
+  const isFollow = window.__SHORTS_IS_FINAL === false && !window.__SHORTS_IN_BRIDGE;
   const badgeTxt = isFollow ? '+ ติดตาม' : '▶ คลิปเต็ม';
   const label = (s && s.visualCta) || window.__SHORTS_CTA_TEXT || (isFollow
     ? 'กดติดตามรอตอนจบ · คลิปเต็มหน้าช่อง'
-    : 'ดูเรื่องเต็มแบบไม่ตัด ที่คลิปยาวด้านล่าง');
+    : 'ดูเฉลยเต็มที่ลิงก์ด้านล่าง');
 
-  const x = 68;
-  const y = 1544;
-  const h = 44;
-  const arrowBounce = Math.sin(elapsed * 11) * 4;
-  const badgeW = Math.ceil(measure(c, badgeTxt, 17, 800)) + 22;
-  const arrowZone = 26;
-  const lblSz = fitTextSize(c, label, 840 - badgeW - arrowZone - 32, 18, 13, 700);
-  const lblW = Math.ceil(measure(c, label, lblSz, 700));
-  const boxW = Math.min(846, badgeW + lblW + arrowZone + 28);
+  const x = 56;
+  const y = 1528;
+  const h = 52;
+  const arrowBounce = Math.sin(elapsed * 11) * 5;
+  const badgeW = Math.ceil(measure(c, badgeTxt, 18, 800)) + 24;
+  const arrowZone = 32;
+  const lblSz = fitTextSize(c, label, 820 - badgeW - arrowZone - 32, 22, 14, 800);
+  const lblW = Math.ceil(measure(c, label, lblSz, 800));
+  const boxW = Math.min(846, badgeW + lblW + arrowZone + 32);
 
   c.save();
   c.globalAlpha = a;
-  c.shadowColor = 'rgba(0,0,0,0.55)';
-  c.shadowBlur = 16;
-  c.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  c.shadowColor = 'rgba(0,0,0,0.65)';
+  c.shadowBlur = 18;
+  c.fillStyle = 'rgba(8, 15, 13, 0.92)';
   rr(c, x, y, boxW, h, 10);
   c.fill();
   c.shadowBlur = 0;
-  c.strokeStyle = 'rgba(239, 68, 68, 0.72)';
-  c.lineWidth = 1.8;
+  c.strokeStyle = 'rgba(250, 204, 21, 0.72)';
+  c.lineWidth = 2.0;
   rr(c, x, y, boxW, h, 10);
   c.stroke();
 
   c.fillStyle = '#DC2626';
-  rr(c, x + 5, y + 5, badgeW, h - 10, 7);
+  rr(c, x + 6, y + 6, badgeW, h - 12, 7);
   c.fill();
-  txt(c, badgeTxt, x + 5 + badgeW / 2, y + 28, 17, '#FFFFFF', 800, 'center');
+  txt(c, badgeTxt, x + 6 + badgeW / 2, y + 32, 18, '#FFFFFF', 800, 'center');
 
-  txt(c, label, x + badgeW + 16, y + 28.5, lblSz, '#F8FAFC', 700, 'left');
-  txt(c, '▼', x + boxW - 18, y + 29 + arrowBounce, 18, '#FACC15', 900, 'center');
+  txt(c, label, x + badgeW + 18, y + 33, lblSz, '#FACC15', 800, 'left');
+  // Downward arrow pointing toward YouTube Shorts Related Video link at bottom-left
+  txt(c, '▼', x + 46, y + h + 22 + arrowBounce, 24, '#FACC15', 900, 'center');
   c.restore();
 }

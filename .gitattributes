@@ -1,0 +1,6 @@
+.git* export-ignore
+dist/ export-ignore
+output/ export-ignore
+temp/ export-ignore
+*.zip export-ignore
+*.skill export-ignore

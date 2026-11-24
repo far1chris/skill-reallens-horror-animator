@@ -2,13 +2,14 @@
 <html
   lang="th"
   data-composition-variables='[
-    {"id":"title","type":"string","label":"Episode Title","default":"Real Lens Survival Horror"},
-    {"id":"shortsMode","type":"boolean","label":"Vertical Shorts Mode","default":false}
+    {"id":"title","type":"string","label":"Episode Title","default":"Real Lens Horror"},
+    {"id":"shortsMode","type":"boolean","label":"Vertical Shorts Mode","default":false},
+    {"id":"hudMode","type":"string","label":"HUD Mode (survival | documentary)","default":"survival"}
   ]'
 >
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=1280, height=720" />
+<meta name="viewport" content="width=1920, height=1080" />
 <title>Real Lens 2.5D Survival Horror (HyperFrames)</title>
 <script src="assets/vendor/gsap.min.js"></script>
 <style>
@@ -62,8 +63,8 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    width: 1280px;
-    height: 720px;
+    width: 1920px;
+    height: 1080px;
     background: #070A12;
     color: #FAF6EE;
     font-family: "Kanit", sans-serif;
@@ -72,8 +73,8 @@
   }
   #root {
     position: relative;
-    width: 1280px;
-    height: 720px;
+    width: 1920px;
+    height: 1080px;
     overflow: hidden;
     background: #0B1320;
   }
@@ -81,8 +82,8 @@
     position: absolute;
     left: 0;
     top: 0;
-    width: 1280px;
-    height: 720px;
+    width: 1920px;
+    height: 1080px;
     background: #0B1320;
     display: block;
     z-index: 1;
@@ -96,9 +97,9 @@
   data-composition-id="main"
   data-start="0"
   data-duration="30"
-  data-width="1280"
-  data-height="720"
-  data-fps="24"
+  data-width="1920"
+  data-height="1080"
+  data-fps="30"
 >
   <canvas
     id="stage"
@@ -108,8 +109,8 @@
     data-track-index="0"
     data-layout-ignore
     data-hold
-    width="1280"
-    height="720"
+    width="1920"
+    height="1080"
   ></canvas>
   <audio
     id="master-audio"
@@ -135,12 +136,11 @@
   const SCENES = TL.scenes || [];
 
   const rootEl = document.getElementById('root');
+  const DEFAULT_W = Number(rootEl && rootEl.getAttribute('data-width')) || 1920;
+  const DEFAULT_H = Number(rootEl && rootEl.getAttribute('data-height')) || 1080;
+  window.__RENDER_SCALE = DEFAULT_W / W;
 
-  function setShortsMode(enabled) {
-    const on = Boolean(enabled);
-    window.SHORTS_MODE = on;
-    const cw = on ? 1080 : 1280;
-    const ch = on ? 1920 : 720;
+  function applyBoxSize(cw, ch) {
     cvs.width = cw;
     cvs.height = ch;
     cvs.style.width = cw + 'px';
@@ -154,15 +154,40 @@
     document.body.style.width = cw + 'px';
     document.body.style.height = ch + 'px';
   }
+
+  function setRenderResolution(rw, rh) {
+    const cw = Math.max(320, Number(rw) || DEFAULT_W);
+    const ch = Math.max(180, Number(rh) || DEFAULT_H);
+    window.SHORTS_MODE = false;
+    window.__RENDER_SCALE = cw / W;
+    applyBoxSize(cw, ch);
+  }
+  window.setRenderResolution = setRenderResolution;
+
+  function setShortsMode(enabled) {
+    const on = Boolean(enabled);
+    window.SHORTS_MODE = on;
+    const cw = on ? 1080 : DEFAULT_W;
+    const ch = on ? 1920 : DEFAULT_H;
+    window.__RENDER_SCALE = on ? 1 : (cw / W);
+    applyBoxSize(cw, ch);
+  }
   window.setShortsMode = setShortsMode;
 
-  // Read HyperFrames composition variables if provided (--variables / Studio panel) or ?shorts=1
+  // Read HyperFrames composition variables if provided (--variables / Studio panel) or query params
   if (/[?&]shorts=(?:1|true)/i.test(window.location.search)) {
     window.SHORTS_MODE = true;
+  }
+  const hudMatch = window.location.search.match(/[?&]hudMode=(survival|documentary)/i);
+  if (hudMatch) {
+    window.HUD_MODE = hudMatch[1].toLowerCase();
+  } else if (TL.hudMode) {
+    window.HUD_MODE = String(TL.hudMode).toLowerCase();
   }
   if (window.__hyperframes && typeof window.__hyperframes.getVariables === 'function') {
     const vars = window.__hyperframes.getVariables() || {};
     if (typeof vars.shortsMode === 'boolean') window.SHORTS_MODE = vars.shortsMode;
+    if (vars.hudMode === 'documentary' || vars.hudMode === 'survival') window.HUD_MODE = vars.hudMode;
   }
   if (window.SHORTS_MODE) setShortsMode(true);
 
@@ -180,16 +205,22 @@
     const s = findScene(t);
     if (!s) return;
     const lt = Math.max(0, t - s.start);
-    const cw = window.SHORTS_MODE ? 1080 : W;
-    const ch = window.SHORTS_MODE ? 1920 : H;
+    const shorts = Boolean(window.SHORTS_MODE);
+    const physW = cvs.width || (shorts ? 1080 : DEFAULT_W);
+    const physH = cvs.height || (shorts ? 1920 : DEFAULT_H);
+    const rs = shorts ? 1 : (physW / W);
+    window.__RENDER_SCALE = rs;
+    const logW = shorts ? physW : W;
+    const logH = shorts ? physH : H;
 
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, cw, ch);
+    ctx.setTransform(rs, 0, 0, rs, 0, 0);
+    ctx.clearRect(0, 0, logW, logH);
 
     const viewMap = window.VIEWS || (typeof VIEWS !== 'undefined' ? VIEWS : {});
     const fn = viewMap[s.view] || viewMap[SCENES[0].view];
-    const storyHudEnabled = Boolean(window.__ENABLE_STORY_HUD);
+    const activeHudMode = typeof getHudMode === 'function' ? getHudMode(s) : (window.HUD_MODE || TL.hudMode || 'survival');
+    const storyHudEnabled = activeHudMode !== 'documentary' && Boolean(window.__ENABLE_STORY_HUD);
     const activeCard = storyHudEnabled ? (typeof normalizeCard === 'function' ? normalizeCard(s) : s.card) : null;
     const noBlurViews = window.NO_BLUR_VIEWS || [];
 
@@ -214,7 +245,7 @@
     const fadeOut = 1 - prog(lt, s.dur - 0.14, s.dur);
     const edgeFade = Math.min(fadeIn, fadeOut);
 
-    if (!window.__HIDE_HUD) {
+    if (!window.__HIDE_HUD && activeHudMode !== 'documentary') {
       if (window.__ENABLE_STORY_TELE && typeof drawTele === 'function') drawTele(ctx, s, lt);
       if (storyHudEnabled && activeCard && typeof drawCard === 'function') drawCard(ctx, activeCard, lt, s.dur);
     }
@@ -222,10 +253,10 @@
 
     if (edgeFade < 1) {
       ctx.fillStyle = `rgba(10,14,22,${(1 - edgeFade) * 0.38})`;
-      ctx.fillRect(0, 0, cw, ch);
+      ctx.fillRect(0, 0, logW, logH);
     }
 
-    if (!window.__HIDE_HUD) drawSub(ctx, s, lt);
+    if (!window.__HIDE_HUD && !window.__SHORTS_IN_BRIDGE) drawSub(ctx, s, lt);
     if (!window.__HIDE_HUD && typeof drawShortsEndingCTA === 'function') drawShortsEndingCTA(ctx, s, lt, t, TOTAL);
     ctx.restore();
   }

@@ -4,7 +4,7 @@
 //  Part of skill: reallens-horror-animator
 //
 //  Usage:
-//    node sync_hyperframes.js [--dir <projectDir>] [--width 1280] [--height 720] [--fps 24]
+//    node sync_hyperframes.js [--dir <projectDir>] [--width 1920] [--height 1080] [--fps 30]
 // =============================================================================
 const fs = require('fs');
 const path = require('path');
@@ -63,9 +63,15 @@ const readAttr = (name, fallback) => {
   return m ? m[1] : fallback;
 };
 
-const width = getArg('--width') || readAttr('data-width', '1280');
-const height = getArg('--height') || readAttr('data-height', '720');
-const fps = getArg('--fps') || readAttr('data-fps', '24');
+const width = getArg('--width') || readAttr('data-width', '1920');
+const height = getArg('--height') || readAttr('data-height', '1080');
+const fps = getArg('--fps') || readAttr('data-fps', '30');
+
+html = html
+  .replace(/<meta\s+name=["']viewport["'][^>]*>/i, `<meta name="viewport" content="width=${width}, height=${height}" />`)
+  .replace(/(html,\s*body\s*\{[\s\S]*?width:\s*)\d+px(;[\s\S]*?height:\s*)\d+px;/, `$1${width}px$2${height}px;`)
+  .replace(/(#root\s*\{[\s\S]*?width:\s*)\d+px(;[\s\S]*?height:\s*)\d+px;/, `$1${width}px$2${height}px;`)
+  .replace(/(#stage\s*\{[\s\S]*?width:\s*)\d+px(;[\s\S]*?height:\s*)\d+px;/, `$1${width}px$2${height}px;`);
 
 // 3. Build scene track markers (<= 3 per lane for 0 lint warnings) + data-beat attributes
 const sceneClips = tl.scenes.map((s, idx) => {

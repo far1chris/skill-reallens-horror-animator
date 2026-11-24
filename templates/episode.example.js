@@ -1,101 +1,167 @@
 // =============================================================================
 //  episode.js — Story & Scene Specification (Single Source of Truth)
 //  Part of skill: reallens-horror-animator
-//  Copy to your project root as `episode.js` and replace with your story.
+//  Supports Dual Modes:
+//    - NARRATIVE_MODE: 'documentary' (Thai/Isan Folklore Science & History Decode, 8-12 min)
+//                      | 'survival'  (Classic Real Lens 2.5D Survival Horror)
+//    - HUD_MODE      : 'documentary' (Clean Cinema Mode — 100% pure animated visuals + subtitles ONLY;
+//                                     hides ALL survival bars, rule cards, and popup text boxes!)
+//                      | 'survival'  (Classic survival mode; legacy telemetry/rule cards opt-in only)
 //
-//  Shorts / Vertical Packaging Structure:
-//    - Event Cuts (45-60s/clip): Group scenes with `eventId` / `eventTitle` (or auto-sliced by shorts_planner.js)
-//    - Standalone (45-60s): Short `act: 1` story stands alone
-//    - 2-Part Max Cap: Never exceed 2 parts (`act: 1` + `act: 2`, with `isRecap: true` 3s recap on Part 2 opener)
-//
-//  Optional Top-Level & Scene Shorts Packaging Fields (NO leading "EP 1:", "เหตุการณ์ #1:", or pills/stamps):
-//    shortsTitle   : optional string or [titleTop, titleBot] — short 2-line punchy title
-//    shortsSubHook : optional string — concise teaser text inside the sharp red tag box directly below cover title
-//    titleRedLine  : optional 1 | 2 — which title line uses Red (#EF4444) vs White (#FFFFFF)
-//    eventId       : optional string/number — groups interesting scenes into standalone 45-60s event Shorts
-//    eventTitle    : optional string — short understandable title for that event cut
-//
-//  Clean Cinematic Horror Rules:
-//    - Pure story visuals + subtitles ONLY (ZERO infographic explainers / HUD boxes,
-//      ZERO top-right telemetry meters, and ZERO red "บทนำ · COLD OPEN" pill banners).
-//    - Never author `chapter`, `telemetry`, `hud`, or `card` inside story scenes.
-//
-//  Scene Fields:
-//    id            : unique string/number (used for audio cache & HyperFrames clips)
-//    view          : key in VIEWS[...] inside views.js
-//    act           : optional narrative act (1 standalone 45-60s; max 2 acts total)
-//    isRecap       : true on the first scene of act: 2 so Part 2 opens immediately with a 3s recap (0.06s lead)
-//    vo            : Thai voiceover narration ("" for silent cliffhanger beat)
-//    pad           : trailing silence in seconds after VO finishes
-//    bed           : ambience bed key ('hum'|'dark'|'parking'|'wind'|'freeze'|'water'|'none')
-//    sfx           : [{ at: secFromSceneStart, type: 'door'|... }] (also supports {t, k})
-//    isClimax      : optional true — marks a peak key scene for Shorts covers & Showdown thumbnail
-//    coverAt       : optional seconds from scene start — exact timestamp for cover extraction
-//    coverScore    : optional priority number for key-scene ranking
-//    coverHeadline : optional [titleTop, titleBot] — custom 2-line Shorts cover/overlay hook
-//    focusX        : optional 0..1280 X center for 5-panel vertical column crops
+//  IRON SCRIPTING RULES:
+//    1. STRICT FIELD SEPARATION:
+//       - `narration` (legacy alias: `vo`): ONLY spoken Thai script sent to TTS & subtitles.
+//         NEVER write camera or storyboard commands ("มุมเสย", "แพนกล้อง", "ซูมเข้า", "มองกล้อง")
+//         inside `narration`!
+//       - `visual_prompt`: What appears visually on screen (setting, lighting, props, action).
+//       - `camera_note` & `cameraSpec`: Camera angle, pitch, horizonY, framing, movement.
+//    2. ANTI-SPOILER RETENTION ARC (Documentary 8-12 min target):
+//       - 0:00-0:45  (`phase: 'hook'`)     : Horror incident + mystery question. NO science/history reveal!
+//       - 0-50%      (`phase: 'folklore'`) : Myths, rituals, taboos, social tension & dread build-up.
+//       - 50-90%     (`phase: 'decode'`, `isReveal: true`): Gradual medical/anthropology/history decode.
+//       - 90-100%    (`phase: 'outro'`, `isFinalScene: true`): Synthesis + comment/subscribe CTA ONLY here!
+//    3. ANTI-REPETITION RULE:
+//       - NEVER recycle the same fictional "พ่อใหญ่/แม่เฒ่าวัย 60-70 ปี นั่งแคร่หน้าบ้าน" framing every episode.
+//       - Alternate framing across real archival newspapers, medical/clinical case studies, real B.E. years,
+//         field ethnography, and historical/economic archives.
+//    4. LONG-FORM SEO TITLE FORMULA:
+//       - Primary keyword (legend/ghost name) inside the FIRST 50-60 characters.
+//       - NEVER append channel name suffix (e.g. NO "| เว้าเรื่องหลอน").
+//       - NEVER spoil the scientific/historical cause in the title.
 // =============================================================================
 
-const TITLE = 'เสียงเคาะกระจกตีหนึ่ง?! | กฎกะดึกสถานีสายสุดท้าย';
-const SUBTITLE = 'THE LAST SUBWAY SHIFT · SURVIVAL HORROR';
+const NARRATIVE_MODE = 'documentary'; // 'documentary' | 'survival'
+const HUD_MODE = 'documentary';       // 'documentary' | 'survival'
 
-const SHORTS_TITLE = ['เสียงเคาะกระจก', 'ตอนตีหนึ่ง!'];
-const SHORTS_SUB_HOOK = 'คำตอบหลอนกว่าที่คุณคิดเยอะ!';
-const TITLE_RED_LINE = 1;
+// Long-Form SEO Title: Primary keyword in first 50-60 chars, zero channel suffix, zero spoiler
+const TITLE = 'ตำนานผีแม่ม่ายอีสาน ทำไมชายหนุ่มยุค 80 ต้องทาเล็บแดงนอน?!';
+const SUBTITLE = 'THAI FOLKLORE DECODED · SCIENCE & HISTORY DOCUMENTARY';
 
-const SCENES = [
+// Per-episode pronunciation overrides merged on top of `pronunciation_map.js`
+// (Converts English, medical terms, proper nouns & tricky Thai/Isan words for TTS ONLY — subtitles stay original)
+const PRONUNCIATION_MAP = {
+  // เพิ่มหรือแก้คำเฉพาะของตอนนี้ได้ที่นี่ (คำพื้นฐานกว่า 150 คำถูกโหลดจาก pronunciation_map.js แล้วอัตโนมัติ)
+  SUNDS: 'ซันด์ส',
+  Brugada: 'บรูกาด้า',
+  'นักมานุษยวิทยา': 'นัก-มะ-นุด-สะ-ยะ-วิด-ทะ-ยา'
+};
+
+// Optional 3-4s spoken CTA played over the Related Video Bridge End-Card on Cliffhanger Shorts
+const SHORTS_BRIDGE_CTA_VO = 'ความจริงเบื้องหลังตำนานนี้คืออะไร กดดูเฉลยเต็มที่ลิงก์ด้านล่างได้เลยครับ';
+const SHORTS_BRIDGE_CTA_TEXT = 'ดูเฉลยเต็มที่ลิงก์ด้านล่าง';
+
+// Optional Shorts Thumbnail / Cover copy (<= 4 words, NEVER duplicates TITLE)
+const SHORTS_TITLE = ['ทาเล็บแดงนอน', 'กันผีแม่ม่าย?!'];
+const SHORTS_SUB_HOOK = 'ความจริงเศร้ากว่าผีหลายเท่า!';
+const TITLE_RED_LINE = 2;
+
+// Optional explicit 3-Angle Cliffhanger Shorts definitions (or let shorts_planner.js auto-select 3 angles)
+// NOTE: NEVER include `phase: 'decode'` / `isReveal: true` scenes inside Cliffhanger Shorts!
+const SHORTS_ANGLES = [
   {
-    id: '01_cold_open_anomaly_peak',
-    act: 1,
-    eventId: 'ev_window_knock',
-    eventTitle: 'เสียงเคาะกระจกตอนตีหนึ่ง!',
-    view: 'ots_entity_approach',
-    isClimax: true,
-    coverAt: 1.2,
-    coverHeadline: ['เสียงเคาะกระจก', 'ตอนตีหนึ่ง!'],
-    vo: 'ปัง ปัง ปัง เสียงเคาะกระจกดังขึ้นจากด้านนอกอุโมงค์ที่ไม่มีชานชาลา ทั้งที่รถไฟขบวนสุดท้ายเพิ่งออกไปเมื่อครึ่งชั่วโมงก่อน',
-    pad: 0.4,
-    bed: 'dark',
-    sfx: [{ at: 0.05, type: 'door' }, { at: 0.45, type: 'door' }, { at: 1.8, type: 'heartbeat' }]
-  },
-  {
-    id: '02_rewind_empty_platform',
-    act: 1,
-    view: 'platform_corridor',
-    vo: 'ย้อนกลับไปตอนเที่ยงคืนครึ่ง ผมเพิ่งเดินลาดตระเวนกะดึกบนชานชาลาที่ว่างเปล่า และเห็นเงาใครบางคนยืนจ้องอยู่ที่อีกฝั่งของกระจก',
-    pad: 0.5,
-    bed: 'hum',
-    sfx: [{ at: 0.2, type: 'flicker' }, { at: 2.1, type: 'steps' }]
-  },
-  {
-    id: '03_macro_bloodstained_ticket',
-    act: 1,
-    view: 'macro_bloodstained_ticket',
-    vo: 'ผมก้มลงหยิบตั๋วโดยสารเปื้อนคราบสีคล้ำที่ตกอยู่หน้าห้องควบคุม เวลาที่ประทับไว้บนตั๋วคือตีหนึ่งสิบสองนาที... ซึ่งเป็นเวลาในอีกห้านาทีข้างหน้า',
-    pad: 0.5,
-    bed: 'interior_hush',
-    sfx: [{ at: 0.5, type: 'marker' }, { at: 2.4, type: 'stinger' }]
-  },
-  {
-    id: '04_fire_door_twist',
-    act: 1,
-    view: 'dilemma_booth',
-    vo: 'ไฟฉุกเฉินทั้งโถงดับวูบลง ผมรีบวิ่งฝ่าความมืดไปผลักประตูหนีไฟ แต่พอหันกลับมามอง... เสียงเคาะกระจกกลับดังขึ้นจากด้านหลังผมแทนครับ',
-    pad: 0.8,
-    bed: 'tense_pulse',
-    sfx: [{ at: 0.3, type: 'blackout' }, { at: 5.2, type: 'sting' }]
+    angle: 'ritual',
+    tag: 'cliff_01_ritual',
+    titleTop: 'แขวนใบหนาดหนามพุทรา',
+    titleBot: 'กันผีแม่ม่าย?!',
+    sceneIds: ['01_cold_open_archive_hook', '02_folklore_ritual_dread']
   }
 ];
 
-/* Optional 2-Part Template (ONLY if story cannot fit in 1 clip — MAX 2 EPs!):
+const SCENES = [
+  // ---------------------------------------------------------------------------
+  // PHASE 1: 0:00–0:45 COLD OPEN HOOK (Anti-Spoiler — ZERO science/history reveal!)
+  // ---------------------------------------------------------------------------
   {
-    id: '05_part2_recap_opener',
-    act: 2,
-    isRecap: true, // Forces COLD_OPEN_LEAD = 0.06s + subtitle at 0.00s
+    id: '01_cold_open_archive_hook',
+    phase: 'hook',
+    shortsAngle: 'tension',
+    isClimax: true,
+    view: 'ots_entity_approach',
+    coverAt: 1.4,
+    focusX: 660,
+    // Strictly spoken TTS text — ZERO camera/storyboard instructions!
+    narration: 'ปีพุทธศักราช 2533 ชายหนุ่มวัยทำงานชาวอีสานจำนวนมากเข้านอนตามปกติในคืนที่อากาศเงียบสงัด แต่กลับไม่มีใครตื่นขึ้นมาอีกเลย จนหลายหมู่บ้านต้องเร่งหาทางป้องกันด้วยความหวาดผวา',
+    visual_prompt: 'คืนเดือนหงายหมอกลงจัดริมชานหมู่บ้านชนบท แสงไฟฉายสาดผ่านความมืดเห็นเงาร่างปริศนาไกลๆ ตัดกับเงาบ้านไม้ใต้ถุนสูง',
+    camera_note: 'มุมกว้างระดับต่ำ (Low-angle OTS) ข้ามไหล่พยาน ส่องไฟฉายเข้าหาเงาในหมอก ดันกล้องเข้าช้าๆ',
+    cameraSpec: { pitch: 'low', horizonY: 420, framing: 'OTS-wide', move: 'slow-push' },
+    pad: 0.45,
+    bed: 'dark',
+    sfx: [{ at: 0.08, type: 'rumble' }, { at: 2.2, type: 'heartbeat' }]
+  },
+
+  // ---------------------------------------------------------------------------
+  // PHASE 2: 0–50% FOLKLORE, RITUALS & TENSION (Build dread before any decode)
+  // ---------------------------------------------------------------------------
+  {
+    id: '02_folklore_ritual_dread',
+    phase: 'folklore',
+    shortsAngle: 'ritual',
     view: 'platform_corridor',
-    vo: 'ความเดิมจากตอนที่แล้ว หลังประตูหนีไฟปิดล็อกลง เงาปริศนาก็ก้าวเข้ามาชิดกระจกมากขึ้นเรื่อยๆ...',
-    ...
+    focusX: 620,
+    narration: 'เมื่อความตายเกิดขึ้นซ้ำๆ โดยไร้ร่องรอยบาดแผล ชาวบ้านจึงแขวนหนามพุทราและใบหนาดไว้หน้าประตูเรือน พร้อมทาเล็บสีแดงให้ผู้ชายในบ้าน เพื่อลวงสิ่งที่เชื่อกันว่าเป็นผีแม่ม่าย',
+    visual_prompt: 'หน้าเรือนไม้ยามค่ำคืน มีกิ่งหนามพุทราและใบหนาดแขวนเหนือประตู ตัดสลับแสงตะเกียงวูบไหวในห้องแคบ',
+    camera_note: 'มุมห้องสองจุด (2-point interior) เล่นแสงสีแดงกะพริบจากด้านข้าง แพนกล้องช้าๆ ผ่านบานประตู',
+    cameraSpec: { pitch: 'eye', horizonY: 360, framing: 'medium-interior', move: 'pan-right' },
+    pad: 0.45,
+    bed: 'interior_hush',
+    sfx: [{ at: 0.3, type: 'flicker' }, { at: 2.0, type: 'creak' }]
+  },
+
+  // ---------------------------------------------------------------------------
+  // PHASE 3: 50–90% SCIENTIFIC / MEDICAL / HISTORICAL DECODE (Excluded from Shorts!)
+  // ---------------------------------------------------------------------------
+  {
+    id: '03_medical_decode_sunds',
+    phase: 'decode',
+    isReveal: true, // Strictly excluded by Cliffhanger Shorts planner to prevent spoilers!
+    view: 'macro_bloodstained_ticket',
+    focusX: 640,
+    narration: 'แต่เมื่อทีมแพทย์และนักมานุษยวิทยาลงพื้นที่ตรวจสอบแฟ้มเวชระเบียนย้อนหลัง กลับพบความเชื่อมโยงกับภาวะหัวใจเต้นผิดจังหวะเฉียบพลัน หรือกลุ่มอาการ SUNDS และ Brugada ที่มักเกิดขณะหลับลึก',
+    visual_prompt: 'มุมมองบุคคลที่หนึ่ง ไฟฉายสาดลงบนแฟ้มบันทึกทางการแพทย์และกราฟคลื่นหัวใจเก่าบนโต๊ะเหล็ก',
+    camera_note: 'โคลสอัพมือถือไฟฉายกวาดแสงจากซ้ายไปขวาเหนือเอกสารบันทึกจริง',
+    cameraSpec: { pitch: 'high-top', horizonY: 180, framing: 'macro-POV', move: 'light-sweep' },
+    pad: 0.48,
+    bed: 'hum',
+    sfx: [{ at: 0.5, type: 'marker' }, { at: 2.6, type: 'sting' }]
+  },
+
+  // ---------------------------------------------------------------------------
+  // PHASE 4: 90–100% SYNTHESIS & FINAL CTA (CTA allowed ONLY on final scene!)
+  // ---------------------------------------------------------------------------
+  {
+    id: '04_outro_synthesis_cta',
+    phase: 'outro',
+    isReveal: true,
+    isFinalScene: true,
+    view: 'dilemma_booth',
+    focusX: 640,
+    narration: 'พิธีกรรมความเชื่อในวันนั้นจึงไม่ใช่เพียงความงมงาย แต่คือกลไกทางจิตวิทยาที่ช่วยประคองใจผู้คนในวันที่การแพทย์ยังไปไม่ถึง หากคุณเคยได้ยินเรื่องเล่าทำนองนี้ในบ้านเกิด ลองคอมเมนต์แลกเปลี่ยนกันไว้ใต้คลิป และกดติดตามเพื่อรอถอดรหัสตำนานตอนต่อไปครับ',
+    visual_prompt: 'มุมสูงเหนือพื้นที่ปิด แสงสัญญาณเตือนค่อยๆ สงบลง เผยความเงียบสงัดหลังคลี่คลายปริศนา',
+    camera_note: 'มุมสูงก้มลง (Top-down) ถอยกล้องออกช้าๆ พร้อมแสงเงาเย็นสงบ',
+    cameraSpec: { pitch: 'top-down', horizonY: 160, framing: 'high-wide', move: 'pull-out' },
+    pad: 0.50,
+    bed: 'tense_pulse',
+    sfx: [{ at: 0.4, type: 'rumble' }]
   }
+];
+
+/* Backward-Compatible Survival Mode Example:
+   const NARRATIVE_MODE = 'survival';
+   const HUD_MODE = 'survival';
+   // Legacy `vo` field continues to work identically alongside `narration`!
 */
 
-module.exports = { TITLE, SUBTITLE, SHORTS_TITLE, SHORTS_SUB_HOOK, TITLE_RED_LINE, SCENES };
+module.exports = {
+  NARRATIVE_MODE,
+  HUD_MODE,
+  TITLE,
+  SUBTITLE,
+  PRONUNCIATION_MAP,
+  SHORTS_BRIDGE_CTA_VO,
+  SHORTS_BRIDGE_CTA_TEXT,
+  SHORTS_TITLE,
+  SHORTS_SUB_HOOK,
+  TITLE_RED_LINE,
+  SHORTS_ANGLES,
+  SCENES
+};

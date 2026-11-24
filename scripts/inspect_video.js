@@ -49,6 +49,19 @@ function getFFmpegPath() {
 
 const ffmpeg = getFFmpegPath();
 
+function loadNarrationQA(projectDir) {
+  for (const candidate of [
+    path.join(projectDir, 'narration_qa.js'),
+    path.join(__dirname, 'narration_qa.js'),
+    path.join(__dirname, '..', 'scripts', 'narration_qa.js')
+  ]) {
+    if (fs.existsSync(candidate)) {
+      try { return require(candidate); } catch (_) {}
+    }
+  }
+  return null;
+}
+
 function hexToLuminance(hex) {
   const h = hex.replace('#', '');
   const r = parseInt(h.slice(0, 2), 16) / 255;
@@ -212,9 +225,10 @@ function inspectVideo(videoPath, options = {}) {
             }
           }
         }
-        if (typeof s?.vo === 'string') {
-          if (/\[\[(?:char|character)(?::|\|)/i.test(s.vo)) charRoleCount++;
-          if (/\[\[(?:impersonate|mimic)(?::|\|)/i.test(s.vo)) impersonateRoleCount++;
+        const rawInline = typeof s?.narration === 'string' ? s.narration : (typeof s?.vo === 'string' ? s.vo : '');
+        if (rawInline) {
+          if (/\[\[(?:char|character)(?::|\|)/i.test(rawInline)) charRoleCount++;
+          if (/\[\[(?:impersonate|mimic)(?::|\|)/i.test(rawInline)) impersonateRoleCount++;
         }
       }
     } catch (_) {}
@@ -266,7 +280,8 @@ function inspectVideo(videoPath, options = {}) {
       let checked = 0;
       const rateFails = [];
       for (const sc of scs) {
-        const rawTxt = normFn ? normFn(sc.vo || '', sc.role || 'narrator') : String(sc.vo || '');
+        const scText = sc.narration || sc.vo || '';
+        const rawTxt = normFn ? normFn(scText, sc.role || 'narrator') : String(scText);
         const plain = rawTxt.replace(/[\s!?؟.,…'"“”‘’\-:;()[\]{}]/g, '');
         if (!plain || !(sc.voDur > 0)) continue;
         checked++;
@@ -521,8 +536,9 @@ function inspectVideo(videoPath, options = {}) {
           horrorClutterIssues.push('views.js contains disguised marker-arrow lecture board (hand marker + setLineDash)');
         }
       }
+      const isDocHud = /HUD_MODE\s*=\s*['"]documentary['"]|hudMode\s*:\s*['"]documentary['"]/.test(episodeRaw || '');
       if (!horrorCleanVisualsPass) hudCardPaddingPass = false;
-      console.log(`   - Clean Horror Video (No HUD/บทนำ): ${horrorCleanVisualsPass ? '✅ VERIFIED (Zero infographics/telemetry/red chapter pills)' : `❌ FAIL (${horrorClutterIssues.join('; ')})`}`);
+      console.log(`   - Clean Cinema Video (No HUD/บทนำ): ${horrorCleanVisualsPass ? `✅ VERIFIED (Zero game telemetry/rule cards/popup overlays${isDocHud ? '; Documentary Clean Cinema Mode active' : ''})` : `❌ FAIL (${horrorClutterIssues.join('; ')})`}`);
     }
   }
 
@@ -646,22 +662,31 @@ function inspectVideo(videoPath, options = {}) {
 
   const rawTitle = episodeData?.TITLE || timelineData?.title || '';
   if (rawTitle) {
-    const parts = String(rawTitle).split('|');
-    const front = parts[0].trim();
-    if (parts.length < 2 || front.length > 48) {
+    const titleStr = String(rawTitle).trim();
+    const channelSuffixRe = /\|\s*(?:เว้าเรื่องหลอน|Real\s*Lens|@[\w.-]+)\s*$/i;
+    if (channelSuffixRe.test(titleStr)) {
       titleSeoPass = false;
-      retentionNotes.push(`TITLE front hook ${front.length} chars or missing '|' series suffix`);
+      retentionNotes.push(`TITLE appends redundant channel name suffix ("${titleStr.split('|').pop().trim()}") — remove channel suffix`);
+    }
+    const frontPart = titleStr.includes('|') ? titleStr.split('|')[0].trim() : titleStr;
+    if (titleStr.length > 95) {
+      titleSeoPass = false;
+      retentionNotes.push(`TITLE too long (${titleStr.length} chars > 95) — keep primary keyword inside first 50–60 chars`);
+    }
+    if (titleStr.includes('|') && frontPart.length > 62) {
+      titleSeoPass = false;
+      retentionNotes.push(`TITLE front hook ${frontPart.length} chars > 62 before '|'`);
     }
   }
   if (fs.existsSync(shortsPlanPath)) {
     try {
       const planData = JSON.parse(fs.readFileSync(shortsPlanPath, 'utf8'));
       const eps = planData.episodes || [];
-      const eventEps = eps.filter(e => e.isEvent);
-      const serialEps = eps.filter(e => !e.isEvent && !e.isSingle && !e.isStandalone);
+      const eventEps = eps.filter(e => e.isEvent || e.isCliffhanger);
+      const serialEps = eps.filter(e => !e.isEvent && !e.isCliffhanger && !e.isSingle && !e.isStandalone);
       if (serialEps.length > 2 && !options.allowMultiEp) {
         episodeCapPass = false;
-        retentionNotes.push(`Serialized Shorts count ${serialEps.length} > 2 (must finish in 1 clip 45-60s, max 2 EPs, or event cuts)`);
+        retentionNotes.push(`Serialized Shorts count ${serialEps.length} > 2 (must finish in 1 clip 45-60s, max 2 EPs, cliffhanger angles, or event cuts)`);
       }
       if (serialEps.length === 2 && serialEps[1].hasRecapHook === false) {
         episodeCapPass = false;
@@ -670,14 +695,14 @@ function inspectVideo(videoPath, options = {}) {
       const suffixes = new Set();
       for (const ep of eps) {
         const ft = String(ep.feedTitle || '');
-        if (!ft.includes('|')) {
-          titleSeoPass = false;
-          retentionNotes.push(`Clip ${ep.ep} feedTitle missing '|'`);
-          continue;
-        }
-        const [lhs, ...rhs] = ft.split('|');
+        const hasPipe = ft.includes('|');
+        const [lhs, ...rhs] = hasPipe ? ft.split('|') : [ft];
         const series = rhs.join('|').trim();
         const frontTrim = lhs.trim();
+        if (series && /^(?:เว้าเรื่องหลอน|Real\s*Lens|@[\w.-]+)$/i.test(series)) {
+          titleSeoPass = false;
+          retentionNotes.push(`Clip ${ep.ep} feedTitle appends redundant channel name ("${series}")`);
+        }
         const leadingEpRe = /^(?:EP\.?\s*\d+(?:\s*\([^)]*\))?|ตอนที่\s*\d+|เหตุการณ์\s*(?:ที่|#)?\s*\d+|ตอนเดียวจบ|จบใน(?:\s*\d*\s*คลิป(?:\s*เดียว)?)?)\s*[:·\-–—]\s*/i;
         if (leadingEpRe.test(frontTrim)) {
           titleSeoPass = false;
@@ -694,9 +719,9 @@ function inspectVideo(videoPath, options = {}) {
           retentionNotes.push(`Clip ${ep.ep} feedTitle/cover stamp ("${legacyStamp}") must be disabled on Shorts covers`);
         }
         const hookOnly = frontTrim.replace(leadingEpRe, '');
-        if (hookOnly.length > 42) {
+        if (hookOnly.length > 52) {
           titleSeoPass = false;
-          retentionNotes.push(`Clip ${ep.ep} hook > 40 chars (${hookOnly.length})`);
+          retentionNotes.push(`Clip ${ep.ep} hook > 52 chars (${hookOnly.length})`);
         }
         if (series) suffixes.add(series);
       }
@@ -704,7 +729,7 @@ function inspectVideo(videoPath, options = {}) {
         const overDur = eventEps.find(e => Number(e.dur || 0) > 60.0);
         if (overDur && !options.allowOver60) {
           episodeCapPass = false;
-          retentionNotes.push(`Event clip ${overDur.ep} (${overDur.dur}s) exceeds 60.0s`);
+          retentionNotes.push(`Shorts clip ${overDur.tag || overDur.ep} (${overDur.dur}s) exceeds 60.0s`);
         }
       }
       if (suffixes.size > 1) {
@@ -716,7 +741,7 @@ function inspectVideo(videoPath, options = {}) {
   const act2OpenerIdx = scenesList.findIndex(s => s.act === 2);
   if (act2OpenerIdx !== -1) {
     const sc2 = scenesList[act2OpenerIdx];
-    const recapText = `${sc2.vo || ''} ${Array.isArray(sc2.chapter) ? sc2.chapter.join(' ') : (sc2.chapter?.title || '')}`;
+    const recapText = `${sc2.narration || sc2.vo || ''} ${Array.isArray(sc2.chapter) ? sc2.chapter.join(' ') : (sc2.chapter?.title || '')}`;
     const hasRecap = sc2.isRecap === true || /ความเดิม|ตอนที่แล้ว|หลังจาก|ก่อนหน้านี้|จากตอน|เมื่อกี้|ย้อนสรุป|สรุปความเดิม|recap/i.test(recapText);
     const recapVoStart = sc2.voStart !== undefined ? Number(sc2.voStart) : (sc2.lead !== undefined ? Number(sc2.lead) : 0);
     if (!hasRecap || recapVoStart > 0.25) {
@@ -725,21 +750,42 @@ function inspectVideo(videoPath, options = {}) {
     }
   }
   if (rawTitle || fs.existsSync(shortsPlanPath)) {
-    console.log(`   - Feed Title & Series Suffix SEO: ${titleSeoPass ? '✅ VERIFIED' : `❌ FAIL (${retentionNotes.filter(n => /TITLE|feedTitle|hook >|series/i.test(n)).join('; ')})`}`);
+    console.log(`   - Feed Title & Series Suffix SEO: ${titleSeoPass ? '✅ VERIFIED' : `❌ FAIL (${retentionNotes.filter(n => /TITLE|feedTitle|hook >|series|channel/i.test(n)).join('; ')})`}`);
   }
   if (fs.existsSync(shortsPlanPath) || act2OpenerIdx !== -1) {
-    console.log(`   - Event-Cut / Standalone / <= 2 EP Structure: ${episodeCapPass ? '✅ VERIFIED (event cuts 45-60s, 1 clip, or <= 2 EPs w/ Part 2 3s recap)' : `❌ FAIL (${retentionNotes.filter(n => /Event clip|Shorts count|recap|Act 2/i.test(n)).join('; ')})`}`);
+    console.log(`   - Cliffhanger / Event / <= 2 EP Structure: ${episodeCapPass ? '✅ VERIFIED (cliffhanger bridge 40-50s, event cuts, 1 clip, or <= 2 EPs)' : `❌ FAIL (${retentionNotes.filter(n => /Shorts clip|Event clip|Shorts count|recap|Act 2/i.test(n)).join('; ')})`}`);
   }
   const clicheOutroRe = /(?:ฝากกดไล[กค์]|กดไล[กค์]\s*กดแชร์|อย่าลืมกดไล[กค์]|กดซับสไครบ์|กดกระดิ่ง)/i;
   const clicheScenes = scenesList.filter(sc => {
-    const txtVo = Array.isArray(sc?.voSegments) ? sc.voSegments.map(x => x?.text || '').join(' ') : String(sc?.vo || '');
+    const txtVo = Array.isArray(sc?.voSegments) ? sc.voSegments.map(x => x?.text || '').join(' ') : String(sc?.narration || sc?.vo || '');
     return clicheOutroRe.test(txtVo);
   });
   if (clicheScenes.length > 0) {
     outroRetentionPass = false;
-    retentionNotes.push(`Cliché spoken outro ("ฝากกดไลก์/แชร์") on scene(s) ${clicheScenes.map(s => s.id).join(', ')} — replace with Side-Choosing Question / 1-Sentence Cliffhanger & drawShortsEndingCTA`);
+    retentionNotes.push(`Cliché spoken outro ("ฝากกดไลก์/แชร์") on scene(s) ${clicheScenes.map(s => s.id).join(', ')} — replace with Side-Choosing Question / Cliffhanger Bridge & final-scene-only CTA`);
   }
-  console.log(`   - High-Retention Shorts Ending:   ${outroRetentionPass ? '✅ VERIFIED (Zero cliché "ฝากกดไลก์ กดแชร์" outro; Visual CTA ready)' : `❌ FAIL (${retentionNotes.filter(n => /Cliché spoken outro/i.test(n)).join('; ')})`}`);
+  console.log(`   - High-Retention Ending Policy:   ${outroRetentionPass ? '✅ VERIFIED (Zero cliché "ฝากกดไลก์ กดแชร์" outro; Bridge CTA ready)' : `❌ FAIL (${retentionNotes.filter(n => /Cliché spoken outro/i.test(n)).join('; ')})`}`);
+
+  // 10C. Automated Narration & Audio Tail QA (Camera leaks, unmapped English, mid-video CTA, tail clipping/abrupt cut)
+  let narrationQaPass = true;
+  let narrationQaReport = null;
+  const qaMod = loadNarrationQA(projectDir);
+  if (qaMod) {
+    narrationQaReport = qaMod.runNarrationQA({
+      projectDir,
+      scenes: scenesList,
+      episodeMod: episodeData,
+      videoPath,
+      ffmpegPath: ffmpeg,
+      checkAudioFiles: !isVertical
+    });
+    qaMod.printNarrationQAReport(narrationQaReport, '🎙️ 10C. AUTOMATED NARRATION & AUDIO TAIL QA:');
+    narrationQaPass = narrationQaReport.pass;
+    if (!narrationQaPass) {
+      vocalConsistencyPass = false;
+      vocalIssues.push(...narrationQaReport.errors.map(e => `${e.code}(${e.sceneId})`));
+    }
+  }
 
   // 11. Keyframe Contact Sheet
   const outDir = path.dirname(videoPath);
@@ -786,7 +832,7 @@ function inspectVideo(videoPath, options = {}) {
     { name: 'Audio Stream Present', pass: aCodec !== 'None' },
     { name: 'Frame Rate Determinism (24/30 FPS)', pass: fps === 24 || fps === 30 },
     { name: 'Pixel Format Standard (yuv420p)', pass: pixFmt.includes('yuv420p') },
-    { name: `Audio Loudness & Unified Vocal Tone (${isVertical ? '-14..-18' : '-16..-18'} LUFS)`, pass: loudnessPass && vocalConsistencyPass },
+    { name: `Audio Loudness, Vocal Tone & Narration QA (${isVertical ? '-14..-18' : '-16..-18'} LUFS)`, pass: loudnessPass && vocalConsistencyPass && narrationQaPass },
     { name: 'True Peak Headroom (<= -1.0 dBTP)', pass: truePeak !== null && truePeak <= -1.0 },
     { name: 'Zero Stale Black Intervals', pass: blackFramesCount === 0 },
     { name: 'Character Proportions, Posture & 3s Cold-Open Hook', pass: anatomyProportionsPass && trapeziusNeckPass && articulatedLimbsPass && coldOpenHookPass },

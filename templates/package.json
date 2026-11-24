@@ -1,10 +1,11 @@
 {
   "name": "reallens-episode",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "main": "episode.js",
   "scripts": {
     "audio": "node generate_audio.js",
+    "audio:audit": "node generate_audio.js --audit-only",
     "sync": "node sync_hyperframes.js",
     "lint": "node hf.js lint",
     "check": "node hf.js check",
@@ -12,13 +13,14 @@
     "snapshot": "node hf.js snapshot --review",
     "preview": "node hf.js preview",
     "audit": "node audit_all_scenes.js",
+    "qa:narration": "node audit_all_scenes.js --qa-only",
     "render": "node hf.js render -f 24 -q looks -o master_hf.mp4",
     "render:1440p": "node hf.js render -f 24 -q looks --resolution 1440p -o master_1440p.mp4",
     "render:puppeteer": "node render_mp4.js --1080p",
     "thumbs": "node generate_thumbnail.js",
-    "shorts:overlays": "node generate_shorts_overlays.js",
-    "shorts:render": "node render_all_shorts.js",
-    "shorts:covers": "node generate_scene_covers.js",
+    "shorts:overlays": "node generate_shorts_overlays.js --format cliffhanger",
+    "shorts:render": "node render_all_shorts.js --format cliffhanger",
+    "shorts:covers": "node generate_scene_covers.js --format cliffhanger",
     "inspect": "node inspect_video.js master_hf.mp4 --strict"
   },
   "dependencies": {

@@ -108,7 +108,7 @@ function findAudioSource(inMp4) {
 function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
   const remSec = durSec > 0 ? +(Math.max(0, durSec - u)).toFixed(3) : null;
   const isFinal = item ? item.isFinal !== false : true;
-  const ctaText = (item && item.visualCta) || null;
+  const ctaText = (item && item.bridgeCta && item.bridgeCta.headline) || (item && item.visualCta) || null;
   let acc = 0;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
@@ -116,13 +116,35 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
     if (u < acc + segDur || i === segments.length - 1) {
       const localT = Math.max(0, Math.min(segDur - 0.001, u - acc));
       if (seg.isRecap) {
-        return { isRecap: true, t: localT, recap: seg.recap || {}, remSec, isFinal, ctaText };
+        return { isRecap: true, isBridgeCta: false, t: localT, recap: seg.recap || {}, remSec, isFinal, ctaText };
       }
-      return { isRecap: false, t: Number(seg.start) + localT, remSec, isFinal, ctaText };
+      if (seg.isBridgeCta) {
+        const holdAt = Number(seg.bridge?.holdAt ?? seg.start ?? 0);
+        return { isRecap: false, isBridgeCta: true, t: holdAt, bridgeLocalT: localT, bridge: seg.bridge || {}, remSec, isFinal, ctaText };
+      }
+      return { isRecap: false, isBridgeCta: false, t: Number(seg.start) + localT, remSec, isFinal, ctaText };
     }
     acc += segDur;
   }
-  return { isRecap: false, t: 0, remSec, isFinal, ctaText };
+  return { isRecap: false, isBridgeCta: false, t: 0, remSec, isFinal, ctaText };
+}
+
+function resolveBridgeCtaAudio(projectDir, item, seg) {
+  const candidates = [];
+  if (seg && seg.bridge && seg.bridge.audioFile) {
+    candidates.push(path.resolve(projectDir, seg.bridge.audioFile));
+  }
+  if (item && item.bridgeCta && item.bridgeCta.audioFile) {
+    candidates.push(path.resolve(projectDir, item.bridgeCta.audioFile));
+  }
+  if (item && item.tag) {
+    candidates.push(path.join(projectDir, 'audio', `shorts_bridge_cta_${item.tag}.wav`));
+  }
+  candidates.push(path.join(projectDir, 'audio', 'shorts_bridge_cta.wav'));
+  for (const p of candidates) {
+    if (p && fs.existsSync(p) && fs.statSync(p).size > 1000) return p;
+  }
+  return null;
 }
 
 (async () => {
@@ -136,16 +158,25 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
   const tl = JSON.parse(fs.readFileSync(tlPath, 'utf8'));
   const cfgPath = path.join(projectDir, 'shorts_config.json');
   const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, 'utf8')) : {};
+  const epJsPath = path.join(projectDir, 'episode.js');
+  if (fs.existsSync(epJsPath)) {
+    try {
+      const epMod = require(epJsPath);
+      if (!cfg.SHORTS_ANGLES && Array.isArray(epMod.SHORTS_ANGLES)) cfg.SHORTS_ANGLES = epMod.SHORTS_ANGLES;
+      if (!cfg.SHORTS_BRIDGE_CTA_TEXT && epMod.SHORTS_BRIDGE_CTA_TEXT) cfg.SHORTS_BRIDGE_CTA_TEXT = epMod.SHORTS_BRIDGE_CTA_TEXT;
+      if (!cfg.SHORTS_BRIDGE_CTA_VO && epMod.SHORTS_BRIDGE_CTA_VO) cfg.SHORTS_BRIDGE_CTA_VO = epMod.SHORTS_BRIDGE_CTA_VO;
+    } catch (_) {}
+  }
   const outDir = path.join(projectDir, 'shorts');
   fs.mkdirSync(outDir, { recursive: true });
 
   const requestedMode = (getArg('--mode') || cfg.mode || 'fullscreen').toLowerCase();
-  const format = hasFlag('--single') ? 'single' : (getArg('--format') || cfg.shortsFormat || undefined);
+  const format = hasFlag('--cliffhanger') ? 'cliffhanger' : (hasFlag('--single') ? 'single' : (getArg('--format') || cfg.shortsFormat || undefined));
   const fps = getArg('--fps') || '30';
   const fpsNum = Number(fps) || 30;
   const lufs = getArg('--lufs') || '-14.0';
-  const maxSec = Number(getArg('--max-sec') || cfg.maxSec || 58);
-  const minSec = Number(getArg('--min-sec') || cfg.minSec || 45);
+  const maxSec = getArg('--max-sec') ? Number(getArg('--max-sec')) : (cfg.maxSec ? Number(cfg.maxSec) : undefined);
+  const minSec = getArg('--min-sec') ? Number(getArg('--min-sec')) : (cfg.minSec ? Number(cfg.minSec) : undefined);
   const allowOver60 = hasFlag('--allow-over-60') || Boolean(cfg.allowOver60);
   const onlyEp = getArg('--ep') ? Number(getArg('--ep')) : null;
   const onlyEvents = hasFlag('--events-only');
@@ -184,7 +215,8 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
     : (onlyEvents
       ? epRanges.filter(item => item.isEvent)
       : (onlyEp ? epRanges.filter(item => item.ep === onlyEp && !item.isSingle && !item.isEvent) : epRanges));
-  console.log(`=== Rendering ${selected.length} Vertical Shorts (1080x1920, ${fps}fps, mode=${effectiveMode}${useNativeFullscreen ? ' [native canvas]' : ''}, ${lufs} LUFS, concurrency=${concurrency}, cap=${allowOver60 ? `${maxSec}s (override)` : `${Math.min(maxSec, 60)}s <= 60s`}) ===`);
+  const resolvedCap = maxSec || (epRanges.some(e => e.isCliffhanger) ? 50 : 58);
+  console.log(`=== Rendering ${selected.length} Vertical Shorts (1080x1920, ${fps}fps, mode=${effectiveMode}${useNativeFullscreen ? ' [native canvas]' : ''}, ${lufs} LUFS, concurrency=${concurrency}, cap=${allowOver60 ? `${resolvedCap}s (override)` : `${Math.min(resolvedCap, 60)}s <= 60s`}) ===`);
   console.log(`✓ Saved Shorts plan: ${path.relative(projectDir, planPath)} (${epRanges.length} outputs)`);
 
   for (const item of selected) {
@@ -248,15 +280,23 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
         const durSec = Number(item.dur);
         const segments = Array.isArray(item.segments) && item.segments.length > 0
           ? item.segments
-          : [{ isRecap: false, start: startSec, dur: durSec }];
-        const isMultiSeg = segments.length > 1 || Boolean(segments[0].isRecap);
+          : [{ isRecap: false, isBridgeCta: false, start: startSec, dur: durSec }];
+        const isMultiSeg = segments.length > 1 || Boolean(segments[0].isRecap) || Boolean(segments[0].isBridgeCta);
 
         const overlayFile = path.join(outDir, item.overlayFile || (item.isSingle ? 'overlay_single.png' : `overlay_ep${item.ep}.png`));
+        const ctaOverlayFile = item.ctaOverlayFile ? path.join(outDir, item.ctaOverlayFile) : null;
+        const hasCtaOverlay = Boolean(ctaOverlayFile && fs.existsSync(ctaOverlayFile) && item.bridgeCta);
+        const bridgeSeg = segments.find(g => g.isBridgeCta);
+        const bridgeDur = bridgeSeg ? Number(bridgeSeg.dur || 3.5) : (item.bridgeCta ? Number(item.bridgeCta.dur || 3.5) : 0);
+        const ctaEnableStart = Math.max(0, durSec - bridgeDur).toFixed(3);
+
         const outName = item.outFileName || (item.isSingle ? `${prefix}_single_short.mp4` : `${prefix}_ep${item.ep}_shorts.mp4`);
         const outFile = path.join(outDir, outName);
-        const tag = item.isSingle ? 'Single Short' : (item.isEvent ? `Event #${item.ep}` : `EP ${item.ep}${item.isFinal ? ' (จบ)' : ''}`);
+        const tag = item.isCliffhanger
+          ? `Cliffhanger [${item.angle || item.ep}]`
+          : (item.isSingle ? 'Single Short' : (item.isEvent ? `Event #${item.ep}` : `EP ${item.ep}${item.isFinal ? ' (จบ)' : ''}`));
 
-        console.log(`--- Rendering ${tag} (${outName}, Dur: ${durSec.toFixed(2)}s, segments=${segments.length}, mode=${effectiveMode}) ---`);
+        console.log(`--- Rendering ${tag} (${outName}, Dur: ${durSec.toFixed(2)}s, segments=${segments.length}, mode=${effectiveMode}${hasCtaOverlay ? ', +BridgeCTA' : ''}) ---`);
         const t0 = Date.now();
 
         if (useNativeFullscreen && page) {
@@ -270,15 +310,27 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
             '-i', overlayFile
           ];
 
+          let nextInIdx = 2;
+          let ctaInIdx = -1;
+          if (hasCtaOverlay) {
+            ffArgs.push('-i', ctaOverlayFile);
+            ctaInIdx = nextInIdx++;
+          }
+
+          const videoFilter = hasCtaOverlay
+            ? `[0:v][1:v]overlay=0:0[vhead];[vhead][${ctaInIdx}:v]overlay=0:0:enable='gte(t,${ctaEnableStart})'[vfinal]`
+            : `[0:v][1:v]overlay=0:0[vfinal]`;
+
           let filterComplex;
           if (!isMultiSeg) {
+            const aIdx = nextInIdx++;
             ffArgs.push('-ss', startSec.toFixed(3), '-t', durSec.toFixed(3), '-i', audioSrc);
-            filterComplex = `[0:v][1:v]overlay=0:0[vfinal];[2:a]loudnorm=I=${lufs}:LRA=7.0:TP=-2.5,aresample=48000,alimiter=limit=0.65:attack=0.1:release=50:level=0,volume=-1.5dB,aformat=sample_fmts=s16:sample_rates=48000:channel_layouts=stereo[afinal]`;
+            filterComplex = `${videoFilter};[${aIdx}:a]loudnorm=I=${lufs}:LRA=7.0:TP=-2.5,aresample=48000,alimiter=limit=0.65:attack=0.1:release=50:level=0,volume=-1.5dB,aformat=sample_fmts=s16:sample_rates=48000:channel_layouts=stereo[afinal]`;
           } else {
             const aChains = [];
             const aLabels = [];
             segments.forEach((seg, k) => {
-              const inIdx = 2 + k;
+              const inIdx = nextInIdx++;
               const segDur = Number(seg.dur);
               if (seg.isRecap) {
                 const recapPath = seg.recap && seg.recap.audioFile
@@ -289,6 +341,17 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
                 } else {
                   ffArgs.push('-f', 'lavfi', '-t', segDur.toFixed(3), '-i', 'anullsrc=r=44100:cl=stereo');
                 }
+              } else if (seg.isBridgeCta) {
+                const ctaAudioPath = resolveBridgeCtaAudio(projectDir, item, seg);
+                if (ctaAudioPath) {
+                  // Pad CTA VO with trailing silence if shorter than bridgeDur so exact duration matches
+                  ffArgs.push('-i', ctaAudioPath);
+                  const fadeOutSt = Math.max(0.02, segDur - 0.04).toFixed(3);
+                  aChains.push(`[${inIdx}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad=whole_dur=${segDur.toFixed(3)},atrim=0:${segDur.toFixed(3)},afade=t=in:d=0.015,afade=t=out:st=${fadeOutSt}:d=0.04[a${k}]`);
+                  aLabels.push(`[a${k}]`);
+                  return;
+                }
+                ffArgs.push('-f', 'lavfi', '-t', segDur.toFixed(3), '-i', 'anullsrc=r=44100:cl=stereo');
               } else {
                 ffArgs.push('-ss', Number(seg.start).toFixed(3), '-t', segDur.toFixed(3), '-i', audioSrc);
               }
@@ -297,7 +360,7 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
               aLabels.push(`[a${k}]`);
             });
             filterComplex =
-              `[0:v][1:v]overlay=0:0[vfinal];` +
+              `${videoFilter};` +
               `${aChains.join(';')};` +
               `${aLabels.join('')}concat=n=${segments.length}:v=0:a=1[aconcat];` +
               `[aconcat]loudnorm=I=${lufs}:LRA=7.0:TP=-2.5,aresample=48000,alimiter=limit=0.65:attack=0.1:release=50:level=0,volume=-1.5dB,aformat=sample_fmts=s16:sample_rates=48000:channel_layouts=stereo[afinal]`;
@@ -335,12 +398,14 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
               for (let k = 0; k < BATCH && f + k < totalFrames; k++) {
                 framesBatch.push(mapLocalTimeToSegment((f + k) / fpsNum, segments, durSec, item));
               }
-              const dataUrls = await page.evaluate((items) => {
+              const dataUrls = await page.evaluate((items, ctaOverlayActive) => {
                 const stage = document.getElementById('stage');
                 return items.map(it => {
                   window.__SHORTS_REM_SEC = it.remSec;
                   window.__SHORTS_IS_FINAL = it.isFinal;
                   window.__SHORTS_CTA_TEXT = it.ctaText || null;
+                  window.__SHORTS_CTA_OVERLAY_ACTIVE = ctaOverlayActive;
+                  window.__SHORTS_IN_BRIDGE = Boolean(it.isBridgeCta);
                   if (it.isRecap && typeof window.renderRecapAtTime === 'function') {
                     window.renderRecapAtTime(it.t, it.recap);
                   } else {
@@ -348,7 +413,7 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
                   }
                   return stage.toDataURL('image/jpeg', 0.88);
                 });
-              }, framesBatch);
+              }, framesBatch, hasCtaOverlay);
               for (const durl of dataUrls) {
                 if (ffClosed) break;
                 const buf = Buffer.from(durl.slice(durl.indexOf(',') + 1), 'base64');
@@ -358,13 +423,15 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
           } else {
             for (let f = 0; f < totalFrames && !ffClosed; f++) {
               const m = mapLocalTimeToSegment(f / fpsNum, segments, durSec, item);
-              await page.evaluate((it) => {
+              await page.evaluate((it, ctaOverlayActive) => {
                 window.__SHORTS_REM_SEC = it.remSec;
                 window.__SHORTS_IS_FINAL = it.isFinal;
                 window.__SHORTS_CTA_TEXT = it.ctaText || null;
+                window.__SHORTS_CTA_OVERLAY_ACTIVE = ctaOverlayActive;
+                window.__SHORTS_IN_BRIDGE = Boolean(it.isBridgeCta);
                 if (it.isRecap && typeof window.renderRecapAtTime === 'function') window.renderRecapAtTime(it.t, it.recap);
                 else window.renderAtTime(it.t);
-              }, m);
+              }, m, hasCtaOverlay);
               if (ffClosed) break;
               const buf = await page.screenshot({ type: 'jpeg', quality: 88 });
               if (!ff.stdin.write(buf)) await new Promise(r => ff.stdin.once('drain', r));
@@ -373,18 +440,24 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
           ff.stdin.end();
           await ffDone;
         } else {
-          // FFmpeg fallback crop/letterbox (supports single contiguous window)
+          // FFmpeg fallback crop/letterbox (supports single contiguous window + optional Bridge CTA overlay)
           const focusRatio = Math.max(0.15, Math.min(0.85, (Number(item.focusX) || 640) / 1280)).toFixed(3);
-          const filterComplex =
-            `[0:v]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920:(iw-1080)*${focusRatio}:0[vbase];` +
-            '[vbase][1:v]overlay=0:0[vfinal]';
-
-          await runFFmpegAsync([
+          const ffFallbackArgs = [
             '-y',
             '-ss', startSec.toFixed(3),
             '-t', durSec.toFixed(3),
             '-i', inMp4,
-            '-i', overlayFile,
+            '-i', overlayFile
+          ];
+          let filterComplex =
+            `[0:v]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920:(iw-1080)*${focusRatio}:0[vbase];`;
+          if (hasCtaOverlay) {
+            ffFallbackArgs.push('-i', ctaOverlayFile);
+            filterComplex += `[vbase][1:v]overlay=0:0[vhead];[vhead][2:v]overlay=0:0:enable='gte(t,${ctaEnableStart})'[vfinal]`;
+          } else {
+            filterComplex += `[vbase][1:v]overlay=0:0[vfinal]`;
+          }
+          ffFallbackArgs.push(
             '-filter_complex', filterComplex,
             '-map', '[vfinal]',
             '-map', '0:a',
@@ -394,7 +467,8 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
             '-ar', '48000',
             '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
             outFile
-          ]);
+          );
+          await runFFmpegAsync(ffFallbackArgs);
         }
 
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
