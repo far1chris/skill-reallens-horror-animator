@@ -31,13 +31,16 @@ Split work by **cognitive boundary and strict single-file write ownership** (nev
     │    [Director] node sync_hyperframes.js + node hf.js lint/check + node audit_all_scenes.js (Narration QA + Grid)
     │         │
     │         ▼
-    │    [Visual QA] Phase 4: Audit Narration QA + audit_all_scenes.png + HUD mode (PASS / FAIL ticket, max 2 loops)
+    │    [Visual QA] Phase 4: Audit Narration QA + audit_all_scenes.png + scene_review.html + HUD mode (PASS / FAIL ticket, max 2 loops)
     │         │
+    │         ▼
+    │    ⏸️ [USER REVIEW GATE 1: SCENE APPROVAL] ส่ง audit_all_scenes.png + scene_review.html + scene_previews/ ให้ผู้ใช้ตรวจทุกฉาก
+    │         │  (ถ้ามีจุดแก้ -> View Artist แก้เฉพาะฉาก + `audit_all_scenes.js --scenes ...`; ห้ามเรนเดอร์คลิปยาวจนกว่าจะอนุมัติ!)
     │         ▼
     └──► [Director] Phase 5: Render master_hf.mp4 + Folk Horror 16:9 thumbnails + inspect_video.js master_hf.mp4 --strict
               │
               ▼
-         ⏸️ [USER REVIEW GATE] ส่งคลิปยาว master_hf.mp4 + ปก 16:9 ให้ผู้ใช้ตรวจและอนุมัติก่อน
+         ⏸️ [USER REVIEW GATE 2: LONG-FORM APPROVAL] ส่งคลิปยาว master_hf.mp4 + ปก 16:9 ให้ผู้ใช้ตรวจและอนุมัติก่อน
               │  (หยุดรอที่นี่ — ห้ามทำ Shorts จนกว่าผู้ใช้จะสั่งให้ทำคลิปสั้นต่อ!)
               ▼
          [Director] Phase 6: shorts_planner.js --format cliffhanger (3 angles, 40-50s, anti-spoiler)

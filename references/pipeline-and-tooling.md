@@ -20,7 +20,7 @@ Initialize a new episode directory from [`templates/`](../templates/) and [`scri
 | `sync_hyperframes.js` | [`scripts/sync_hyperframes.js`](../scripts/sync_hyperframes.js) | Localizes Kanit `.woff2` & `gsap.min.js`, stamps `data-duration`, viewport/CSS size (`1920x1080@30fps` default or `--width/--height/--fps`), & scene `.clip` markers (`<= 3` per lane) into `index.html`. |
 | `hf.js` | [`scripts/hf.js`](../scripts/hf.js) | Cross-platform HyperFrames CLI wrapper injecting `ffmpeg-static` & `ffprobe-static` into `PATH`. |
 | `narration_qa.js` | [`scripts/narration_qa.js`](../scripts/narration_qa.js) | Shared Automated Narration & Audio Tail QA module (camera leaks, unmapped English, mid-video CTA, tail clipping/cutoff). |
-| `audit_all_scenes.js` | [`scripts/audit_all_scenes.js`](../scripts/audit_all_scenes.js) | Runs Automated Narration QA (`--qa-only` supported) + renders all scenes (`1..N`) to `audit_all_scenes.png` (GPU-accelerated). |
+| `audit_all_scenes.js` | [`scripts/audit_all_scenes.js`](../scripts/audit_all_scenes.js) | Runs Automated Narration QA (`--qa-only` supported) + renders 4-col HD `audit_all_scenes.png`, per-scene `scene_previews/`, and interactive `scene_review.html` (`--scenes` for quick re-audit). |
 | `render_mp4.js` | [`scripts/render_mp4.js`](../scripts/render_mp4.js) | Parallel GPU-accelerated MP4 exporter (`1920x1080@30fps`) with `--720p --fps 24` draft, `--hq` lossless PNG pipe + NVENC `p6`, `--cq`, and `--grade horror\|sitcom\|auto` FFmpeg finishing filters. |
 | `shorts_planner.js` | [`scripts/shorts_planner.js`](../scripts/shorts_planner.js) | Cliffhanger Bridge 3-Angle Shorts planner (`40–50s`, anti-spoiler, sentence-snapped) + legacy `events`/`single`/`two_part` modes. |
 | `generate_shorts_overlays.js` | [`scripts/generate_shorts_overlays.js`](../scripts/generate_shorts_overlays.js) | Generates minimalist 9:16 title overlays + Related Video Bridge CTA overlays (`overlay_<tag>_cta.png`). |
@@ -119,7 +119,8 @@ Executed automatically by both `node audit_all_scenes.js` (or `node audit_all_sc
    node generate_audio.js                                             # TTS + PRONUNCIATION_MAP + 420ms tail pad
    node sync_hyperframes.js                                           # Sync timeline + local fonts/GSAP into index.html (1920x1080@30fps)
    node hf.js lint && node hf.js check                                # 0 errors, 0 warnings + 7-gate check
-   node audit_all_scenes.js                                           # Narration QA + audit_all_scenes.png grid
+   node audit_all_scenes.js                                           # Narration QA + 4-col audit_all_scenes.png + scene_previews/ + scene_review.html
+   # ⏸️ GATE 1 (User Scene Review): Wait for user approval of all scenes (re-check edits with `node audit_all_scenes.js --scenes 3,7`) before rendering!
    node render_mp4.js --grade horror --cq 17 -o master_hf.mp4         # Fast 1080p NVENC Master (or `--hq` for lossless PNG / `hf.js render` for Studio)
    node inspect_video.js master_hf.mp4 --strict                       # 16/16 PASS + Narration/Audio Tail QA
    ```

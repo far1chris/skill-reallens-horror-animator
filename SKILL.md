@@ -67,21 +67,22 @@ description: >-
 ## 2. Core 7-Phase Workflow
 
 ```text
-[1. Script] -> [2. Audio+QA] -> [3. Views+Sync] -> [4. Audit Gate] -> [5. Master+Thumb] -> [⏸️ Review] -> [6. 3x Shorts] -> [7. Shorts QA]
+[1. Script] -> [2. Audio+QA] -> [3. Views+Sync] -> [4. Audit Gate] -> [⏸️ Gate 1: Scene Review] -> [5. Master+Thumb] -> [⏸️ Gate 2: Long-Form Review] -> [6. 3x Shorts] -> [7. Shorts QA]
 ```
 
 1. **Phase 1 — Script (`episode.js`):** ตั้ง `NARRATIVE_MODE` / `HUD_MODE`, แยก `narration`/`visual_prompt`/`camera_note`, ใส่ `PRONUNCIATION_MAP`, รัน `node audit_all_scenes.js --qa-only`
 2. **Phase 2 — Audio (`node generate_audio.js`):** สังเคราะห์เสียง `Puck` + 420ms tail pad + `shorts_bridge_cta.wav` (ถ้ามี) + `timeline.json`
 3. **Phase 3 — Views & Sync (`views.js`, `node sync_hyperframes.js`):** วาดฉากตาม `visual_prompt`/`camera_note` + สลับ `horizonY` (ใช้ `blurLayer(c, px, fn, '', 'cacheKey')` สำหรับฉากหลังนิ่งเพื่อลดภาระ 1080p) + ซิงก์ `index.html` (`1920x1080 @ 30fps`)
-4. **Phase 4 — Verification Gate:** `node hf.js lint` (`0 err/warn`), `node hf.js check`, `node audit_all_scenes.js` → ตรวจ `audit_all_scenes.png` ด้วย `read_file`
-5. **Phase 5 — Long-Form Native 1080p @ 30fps & Thumbnails (Hybrid HyperFrames + FFmpeg):**
+4. **Phase 4 — Verification Gate & Scene Approval:** `node hf.js lint` (`0 err/warn`), `node hf.js check`, `node audit_all_scenes.js` → สร้าง `audit_all_scenes.png` (4 คอลัมน์ HD) + `scene_previews/` + `scene_review.html` แล้วตรวจเบื้องต้นด้วย `read_file`
+   - **⏸️ MANDATORY GATE 1 (ตรวจทุกฉากก่อนเรนเดอร์คลิปยาว):** ส่ง `audit_all_scenes.png` + `scene_review.html` + `scene_previews/` + ตารางสรุปฉากให้ผู้ใช้ตรวจและอนุมัติก่อนเสมอ **ห้ามสั่งรัน Phase 5 เรนเดอร์คลิปยาวอัตโนมัติจนกว่าผู้ใช้จะแก้ฉากจนพอใจและสั่งให้เรนเดอร์** *(ยกเว้นกรณีผู้ใช้สั่งข้ามตรวจฉากตั้งแต่ต้น)*; หากผู้ใช้สั่งแก้เฉพาะบางฉาก ให้แก้ `views.js`/`episode.js` แล้วรัน `node audit_all_scenes.js --scenes <เลขฉาก>` ส่งตรวจซ้ำก่อนเรนเดอร์!
+5. **Phase 5 — Long-Form Native 1080p @ 30fps & Thumbnails (หลังผ่าน Gate 1):**
    - **Draft รวดเร็ว (`--720p --fps 24`):** `node render_mp4.js --720p --fps 24 -o draft_720p.mp4` (หรือ `hf.js preview` ลากดูไทม์ไลน์)
    - **Fast Master 1080p @ 30fps (NVENC + ลด banding ฉากมืด):** `node render_mp4.js --grade horror --cq 17 -o master_hf.mp4`
    - **HQ Master (PNG lossless pipe + NVENC `p6` `CQ 16` + Film Grade):** `node render_mp4.js --hq --grade horror -o master_hf.mp4`
    - **HyperFrames Studio (`--start/--end`, `--resume`, `--format mov`, `--resolution 4k`):** `node hf.js render -f 30 -q looks --gpu --browser-gpu -o master_hf.mp4`
    - แล้วรัน `node generate_thumbnail.js --strict` และ `node inspect_video.js master_hf.mp4 --strict` (`16/16 PASS`)
-   - **⏸️ MANDATORY USER REVIEW GATE:** ส่งคลิปยาว + ปก 16:9 ให้ผู้ใช้ตรวจและอนุมัติก่อน **ห้ามรันสคริปต์ทำ Shorts อัตโนมัติจนกว่าผู้ใช้จะสั่งทำต่อ** *(ยกเว้นกรณีสั่งทำเฉพาะ Shorts ตั้งแต่ต้น)*
-6. **Phase 6 — Cliffhanger Shorts (หลังอนุมัติ):** `node shorts_planner.js --format cliffhanger`, `node generate_shorts_overlays.js --format cliffhanger`, `node render_all_shorts.js --format cliffhanger`, `node generate_scene_covers.js --format cliffhanger` → ตรวจปก/overlay ด้วย `read_file`
+   - **⏸️ MANDATORY GATE 2 (ตรวจคลิปยาวก่อนทำคลิปสั้น):** ส่งคลิปยาว + ปก 16:9 ให้ผู้ใช้ตรวจและอนุมัติก่อน **ห้ามรันสคริปต์ทำ Shorts อัตโนมัติจนกว่าผู้ใช้จะสั่งทำต่อ** *(ยกเว้นกรณีสั่งทำเฉพาะ Shorts ตั้งแต่ต้น)*
+6. **Phase 6 — Cliffhanger Shorts (หลังอนุมัติ Gate 2):** `node shorts_planner.js --format cliffhanger`, `node generate_shorts_overlays.js --format cliffhanger`, `node render_all_shorts.js --format cliffhanger`, `node generate_scene_covers.js --format cliffhanger` → ตรวจปก/overlay ด้วย `read_file`
 7. **Phase 7 — Final Shorts QA:** `node inspect_video.js shorts/<clip>.mp4 --shorts --strict` (`16/16 PASS`, `<= 60.0s`)
 
 ---
@@ -92,6 +93,7 @@ description: >-
 - [ ] **Narration QA:** `node audit_all_scenes.js --qa-only` ผ่าน 0 errors (ไม่มีมุมกล้องหลุด, แมปคำอังกฤษครบ, ไร้ CTA กลางคลิป)
 - [ ] **Audio Tails:** ทุกซีนมี silence padding `350–500 ms` ไม่มี clipping หรือตัดพยางค์สุดท้าย
 - [ ] **HUD & Visuals:** `HUD_MODE` ตรงแนวคลิป (`documentary` = Clean Screen ภาพแอนิเมชันล้วน + ซับไตเติล ไร้ป้าย/กรอบข้อความป๊อปอัป), ตรวจ `audit_all_scenes.png` ครบทุกซีน
+- [ ] **Gate 1 Scene Approval:** ส่ง `audit_all_scenes.png` + `scene_review.html` ให้ผู้ใช้ตรวจและอนุมัติทุกฉากครบถ้วนก่อนเรนเดอร์ `master_hf.mp4` (`--scenes ...` หลังแก้ฉาก)
 - [ ] **SEO & Thumb:** Keyword ใน 50–60 ตัวแรก, ไร้ชื่อช่องต่อท้าย, ปก Folk Horror `<= 4` คำ ไม่ซ้ำชื่อคลิป
 - [ ] **Shorts Bridge:** 3 มุม (พิธีกรรม / เหตุการณ์ / หักมุม) ยาว `40–50s`, จบขอบประโยค, ไร้สปอยล์เฉลย, มีลูกศร Related Video ชี้ลงซ้ายล่าง
 - [ ] **Clean Pack:** ใช้ `node scripts/pack_skill.js` เมื่อบีบอัด `.zip` (ข้าม `.git/` เสมอ)
