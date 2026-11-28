@@ -82,7 +82,7 @@ description: >-
    - **HyperFrames Studio (`--start/--end`, `--resume`, `--format mov`, `--resolution 4k`):** `node hf.js render -f 30 -q looks --gpu --browser-gpu -o master_hf.mp4`
    - แล้วรัน `node generate_thumbnail.js --strict` และ `node inspect_video.js master_hf.mp4 --strict` (`16/16 PASS`)
    - **⏸️ MANDATORY GATE 2 (ตรวจคลิปยาวก่อนทำคลิปสั้น):** ส่งคลิปยาว + ปก 16:9 ให้ผู้ใช้ตรวจและอนุมัติก่อน **ห้ามรันสคริปต์ทำ Shorts อัตโนมัติจนกว่าผู้ใช้จะสั่งทำต่อ** *(ยกเว้นกรณีสั่งทำเฉพาะ Shorts ตั้งแต่ต้น)*
-6. **Phase 6 — Cliffhanger Shorts (หลังอนุมัติ Gate 2):** `node shorts_planner.js --format cliffhanger`, `node generate_shorts_overlays.js --format cliffhanger`, `node render_all_shorts.js --format cliffhanger`, `node generate_scene_covers.js --format cliffhanger` → ตรวจปก/overlay ด้วย `read_file`
+6. **Phase 6 — Cliffhanger Shorts (หลังอนุมัติ Gate 2):** `node shorts_planner.js --format cliffhanger`, `node generate_shorts_overlays.js --format cliffhanger`, `node render_all_shorts.js --format cliffhanger` *(ค่าเริ่มต้น `--framing crop` เต็มจอแนวตั้ง 100% สัดส่วน 1:1 ไม่ยืดแกน Y — ตั้ง `s.focusX` สำหรับซีนที่ตัวเอกไม่อยู่กลางเฟรม หรือเลือก `--framing cinema|contain` ได้)*, `node generate_scene_covers.js --format cliffhanger` → ตรวจปก/overlay ด้วย `read_file`
 7. **Phase 7 — Final Shorts QA:** `node inspect_video.js shorts/<clip>.mp4 --shorts --strict` (`16/16 PASS`, `<= 60.0s`)
 
 ---

@@ -14,10 +14,16 @@
 // =============================================================================
 const W = 1280, H = 720, TAU = Math.PI * 2;
 const SHORTS_W = 1080, SHORTS_H = 1920;
-const SHORTS_SX = 1.50, SHORTS_SY = SHORTS_H / H; // 1.50x horizontal (720px visible width), 2.6667x vertical (full 0..1920 height)
-const SHORTS_CHAR_SCALE = 1.85;
+const SHORTS_SX = SHORTS_H / H, SHORTS_SY = SHORTS_H / H; // Uniform 1:1 vertical scale (2.6667x in crop mode — zero Y-stretch!)
+const SHORTS_CHAR_SCALE = SHORTS_SY;
+const SHORTS_CINEMA_SCALE = 1.125; // Crisp 1080x810 center stage (75% of 16:9 width at exact 1:1 pixel ratio)
+const SHORTS_CINEMA_Y = 450; // Clears top 2-line title scrim (0..430) & bottom CTA/subtitles (1320+)
+const SHORTS_CONTAIN_SCALE = SHORTS_W / W; // 0.84375 -> 1080x608 full 16:9 width
 let _inShortsWorld = false;
 let _inShortsRig = false;
+let _inShortsBuffer = false;
+let _shortsSceneCv = null, _shortsSceneCtx = null;
+let _shortsBgCv = null, _shortsBgCtx = null;
 
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -32,14 +38,32 @@ const F_MONO = "'JetBrains Mono','Kanit',monospace";
 function isShortsMode() {
   return typeof window !== 'undefined' && Boolean(window.SHORTS_MODE);
 }
+function getShortsFraming(s) {
+  let raw = (s && typeof s.shortsFraming === 'string' && s.shortsFraming) ||
+    (typeof window !== 'undefined' && typeof window.__SHORTS_FRAMING === 'string' && window.__SHORTS_FRAMING) || '';
+  if (!raw && typeof window !== 'undefined' && window.location && window.location.search) {
+    const m = window.location.search.match(/[?&]framing=(cinema|contain|crop)/i);
+    if (m) raw = m[1];
+  }
+  raw = String(raw || 'crop').toLowerCase();
+  return (raw === 'cinema' || raw === 'contain') ? raw : 'crop';
+}
+function resolveShortsFocusX(s) {
+  if (s && typeof s.focusX === 'number' && !Number.isNaN(s.focusX)) {
+    return s.focusX;
+  }
+  if (typeof window !== 'undefined' && typeof window.__SHORTS_FOCUS_X === 'number' && !Number.isNaN(window.__SHORTS_FOCUS_X)) {
+    return window.__SHORTS_FOCUS_X;
+  }
+  return W / 2;
+}
 function beginShortsWorld(c, s) {
   if (!isShortsMode()) return false;
-  const rawFx = s && typeof s.focusX === 'number' ? s.focusX : W / 2;
-  const halfVisW = (SHORTS_W / SHORTS_SX) / 2; // 360px
-  const fx = clamp(rawFx, halfVisW, W - halfVisW);
+  const halfVisW = (SHORTS_W / SHORTS_SY) / 2; // 202.5px at uniform 1:1 scale
+  const fx = clamp(resolveShortsFocusX(s), halfVisW, W - halfVisW);
   c.save();
   c.translate(SHORTS_W / 2, 0);
-  c.scale(SHORTS_SX, SHORTS_SY);
+  c.scale(SHORTS_SY, SHORTS_SY);
   c.translate(-fx, 0);
   _inShortsWorld = true;
   return true;
@@ -50,16 +74,111 @@ function endShortsWorld(c, active) {
   c.restore();
 }
 function applyShortsRigComp(c) {
-  if (!_inShortsWorld || _inShortsRig) return false;
-  c.scale(SHORTS_CHAR_SCALE / SHORTS_SX, SHORTS_CHAR_SCALE / SHORTS_SY);
-  _inShortsRig = true;
-  return true;
+  // Uniform 1:1 scaling requires zero inverse aspect compensation
+  return false;
 }
 function endShortsRigComp(applied) {
   if (applied) _inShortsRig = false;
 }
+function renderShortsWorld(c, s, drawFn) {
+  if (typeof drawFn !== 'function') return;
+  if (!isShortsMode()) { drawFn(c); return; }
+  const framing = getShortsFraming(s);
+  if (framing === 'crop' || typeof document === 'undefined') {
+    const active = beginShortsWorld(c, s);
+    try { drawFn(c); } finally { endShortsWorld(c, active); }
+    return;
+  }
+
+  const sc = framing === 'contain' ? SHORTS_CONTAIN_SCALE : SHORTS_CINEMA_SCALE;
+  const bufW = Math.round(W * sc), bufH = Math.round(H * sc);
+  if (!_shortsSceneCv) {
+    _shortsSceneCv = document.createElement('canvas');
+    _shortsSceneCtx = _shortsSceneCv.getContext('2d');
+  }
+  if (_shortsSceneCv.width !== bufW || _shortsSceneCv.height !== bufH) {
+    _shortsSceneCv.width = bufW; _shortsSceneCv.height = bufH;
+  }
+  if (!_shortsBgCv) {
+    _shortsBgCv = document.createElement('canvas');
+    _shortsBgCv.width = 180; _shortsBgCv.height = 320;
+    _shortsBgCtx = _shortsBgCv.getContext('2d');
+  }
+
+  const prevRS = typeof window !== 'undefined' ? window.__RENDER_SCALE : 1;
+  const prevInW = _inShortsWorld, prevInR = _inShortsRig, prevBuf = _inShortsBuffer;
+  _inShortsWorld = false; _inShortsRig = false; _inShortsBuffer = true;
+  if (typeof window !== 'undefined') window.__RENDER_SCALE = sc;
+  try {
+    _shortsSceneCtx.setTransform(sc, 0, 0, sc, 0, 0);
+    _shortsSceneCtx.clearRect(0, 0, W, H);
+    drawFn(_shortsSceneCtx);
+  } finally {
+    _inShortsWorld = prevInW; _inShortsRig = prevInR; _inShortsBuffer = prevBuf;
+    if (typeof window !== 'undefined') window.__RENDER_SCALE = prevRS;
+  }
+
+  // 1. Uniform-aspect blurred atmospheric backdrop filling full 1080x1920 vertical frame
+  const bgW = _shortsBgCv.width, bgH = _shortsBgCv.height;
+  const bgCropW = Math.round(bufH * (SHORTS_W / SHORTS_H));
+  const fxNorm = clamp(resolveShortsFocusX(s) / W, 0.15, 0.85);
+  const bgSrcX = clamp(Math.round(fxNorm * bufW - bgCropW / 2), 0, Math.max(0, bufW - bgCropW));
+  _shortsBgCtx.save();
+  _shortsBgCtx.clearRect(0, 0, bgW, bgH);
+  _shortsBgCtx.filter = 'blur(6px) brightness(0.40) saturate(1.18)';
+  _shortsBgCtx.drawImage(_shortsSceneCv, bgSrcX, 0, bgCropW, bufH, 0, 0, bgW, bgH);
+  _shortsBgCtx.filter = 'none';
+  _shortsBgCtx.restore();
+
+  c.save();
+  c.fillStyle = '#070A12';
+  c.fillRect(0, 0, SHORTS_W, SHORTS_H);
+  c.imageSmoothingEnabled = true;
+  c.imageSmoothingQuality = 'high';
+  c.drawImage(_shortsBgCv, 0, 0, SHORTS_W, SHORTS_H);
+
+  // Top & bottom contrast gradients in blurred bands for headline, CTA, and subtitles
+  const topBand = c.createLinearGradient(0, 0, 0, 480);
+  topBand.addColorStop(0, 'rgba(6, 10, 18, 0.56)');
+  topBand.addColorStop(1, 'rgba(6, 10, 18, 0.14)');
+  c.fillStyle = topBand; c.fillRect(0, 0, SHORTS_W, 480);
+
+  const botBand = c.createLinearGradient(0, 1220, 0, SHORTS_H);
+  botBand.addColorStop(0, 'rgba(6, 10, 18, 0.18)');
+  botBand.addColorStop(0.55, 'rgba(5, 8, 15, 0.58)');
+  botBand.addColorStop(1, 'rgba(4, 6, 12, 0.78)');
+  c.fillStyle = botBand; c.fillRect(0, 1220, SHORTS_W, SHORTS_H - 1220);
+
+  // 2. Razor-sharp 1:1 center cinema stage centered on scene focal X
+  const visW = SHORTS_W / sc;
+  const fx = clamp(resolveShortsFocusX(s), visW / 2, W - visW / 2);
+  const srcX = clamp(Math.round((fx - visW / 2) * sc), 0, Math.max(0, bufW - SHORTS_W));
+  const stageH = bufH;
+  const stageY = framing === 'contain' ? 551 : SHORTS_CINEMA_Y;
+
+  const topSh = c.createLinearGradient(0, stageY - 40, 0, stageY);
+  topSh.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  topSh.addColorStop(1, 'rgba(0, 0, 0, 0.58)');
+  c.fillStyle = topSh; c.fillRect(0, stageY - 40, SHORTS_W, 40);
+
+  const botSh = c.createLinearGradient(0, stageY + stageH, 0, stageY + stageH + 46);
+  botSh.addColorStop(0, 'rgba(0, 0, 0, 0.62)');
+  botSh.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  c.fillStyle = botSh; c.fillRect(0, stageY + stageH, SHORTS_W, 46);
+
+  c.drawImage(_shortsSceneCv, srcX, 0, SHORTS_W, stageH, 0, stageY, SHORTS_W, stageH);
+
+  c.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  c.lineWidth = 1.5;
+  c.beginPath();
+  c.moveTo(0, stageY + 0.75); c.lineTo(SHORTS_W, stageY + 0.75);
+  c.moveTo(0, stageY + stageH - 0.75); c.lineTo(SHORTS_W, stageY + stageH - 0.75);
+  c.stroke();
+  c.restore();
+}
 function getRenderScale() {
-  if (_inShortsWorld || isShortsMode()) return 1;
+  if (_inShortsWorld) return 1;
+  if (isShortsMode() && !_inShortsBuffer) return 1;
   if (typeof window !== 'undefined' && typeof window.__RENDER_SCALE === 'number' && window.__RENDER_SCALE > 0) {
     return window.__RENDER_SCALE;
   }
@@ -2942,10 +3061,11 @@ function drawSub(c, s, lt) {
   const t0 = cue.t0 !== undefined ? cue.t0 : cue.start;
   const isShorts = typeof window !== 'undefined' && window.SHORTS_MODE;
   const ctaActive = isShorts && typeof window.__SHORTS_REM_SEC === 'number' && window.__SHORTS_REM_SEC <= 2.25 && window.__SHORTS_REM_SEC >= 0.04;
-  const subY = isShorts ? (ctaActive ? 1482 : Math.min(SHORTS_H - 42, 1500)) : (H - 42);
+  const shortsFraming = isShorts ? getShortsFraming(s) : 'crop';
+  const subY = isShorts ? (shortsFraming === 'crop' ? (ctaActive ? 1482 : Math.min(SHORTS_H - 42, 1500)) : (ctaActive ? 1468 : 1435)) : (H - 42);
   const maxSubW = isShorts ? (SHORTS_W - 220) : (W - 120);
   const subSz = fitTextSize(c, cue.text, maxSubW, isShorts ? 42 : 29, isShorts ? 26 : 20, 700);
-  const subX = isShorts ? 495 : (W / 2);
+  const subX = isShorts ? 500 : (W / 2);
   const pop = easeBack(prog(lt, t0, t0 + 0.09));
   const sc = 0.88 + 0.12 * pop;
   const kwPattern = '(?<![\\u0E40-\\u0E44])(?:\\d+(?:[.,:]\\d+)?%?|กฎข้อ\\s*\\d+|ห้าม|ตาย|อันตราย|วิกฤต|คำพิพากษา|โรคระบาด|แพะรับบาป|ผีปอบ|อีปอบ|อำนาจมืด|อคติ|กรรมพันธุ์|หมอธรรม|ทายาทอสูร|อหิวาตกโรค|ไข้ป่า|ท้องป่อง|ตีหนึ่ง|ตีสอง|ตีสาม|ตีสี่|ตีห้า|วินาที|นาที|ชั่วโมง|เมตร|องศา|บาท)(?![\\u0E31\\u0E34-\\u0E3A\\u0E47-\\u0E4E])';

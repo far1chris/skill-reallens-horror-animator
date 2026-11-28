@@ -488,12 +488,12 @@ const MAKE_COVERS_HTML = `<!DOCTYPE html>
     let scenePage = null;
     if (hasStageHtml) {
       scenePage = await browser.newPage();
-      await scenePage.setViewport({ width: 1080, height: 1920, deviceScaleFactor: 1 });
-      await scenePage.goto('file:///' + stageHtmlPath.replace(/\\/g, '/') + '?shorts=1', { waitUntil: 'load' });
+      await scenePage.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+      await scenePage.goto('file:///' + stageHtmlPath.replace(/\\/g, '/'), { waitUntil: 'load' });
       await scenePage.evaluate(async () => {
         if (window.__setHeadless) window.__setHeadless();
         await document.fonts.ready;
-        if (typeof window.setShortsMode === 'function') window.setShortsMode(true);
+        if (typeof window.setRenderResolution === 'function') window.setRenderResolution(1920, 1080);
       });
     }
 

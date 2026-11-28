@@ -109,24 +109,26 @@ function mapLocalTimeToSegment(u, segments, durSec = 0, item = null) {
   const remSec = durSec > 0 ? +(Math.max(0, durSec - u)).toFixed(3) : null;
   const isFinal = item ? item.isFinal !== false : true;
   const ctaText = (item && item.bridgeCta && item.bridgeCta.headline) || (item && item.visualCta) || null;
+  const defaultFx = item && item.focusX != null ? Number(item.focusX) : null;
   let acc = 0;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     const segDur = Number(seg.dur || 0);
+    const segFx = seg.focusX != null ? Number(seg.focusX) : defaultFx;
     if (u < acc + segDur || i === segments.length - 1) {
       const localT = Math.max(0, Math.min(segDur - 0.001, u - acc));
       if (seg.isRecap) {
-        return { isRecap: true, isBridgeCta: false, t: localT, recap: seg.recap || {}, remSec, isFinal, ctaText };
+        return { isRecap: true, isBridgeCta: false, t: localT, recap: seg.recap || {}, remSec, isFinal, ctaText, focusX: segFx };
       }
       if (seg.isBridgeCta) {
         const holdAt = Number(seg.bridge?.holdAt ?? seg.start ?? 0);
-        return { isRecap: false, isBridgeCta: true, t: holdAt, bridgeLocalT: localT, bridge: seg.bridge || {}, remSec, isFinal, ctaText };
+        return { isRecap: false, isBridgeCta: true, t: holdAt, bridgeLocalT: localT, bridge: seg.bridge || {}, remSec, isFinal, ctaText, focusX: segFx };
       }
-      return { isRecap: false, isBridgeCta: false, t: Number(seg.start) + localT, remSec, isFinal, ctaText };
+      return { isRecap: false, isBridgeCta: false, t: Number(seg.start) + localT, remSec, isFinal, ctaText, focusX: segFx };
     }
     acc += segDur;
   }
-  return { isRecap: false, isBridgeCta: false, t: 0, remSec, isFinal, ctaText };
+  return { isRecap: false, isBridgeCta: false, t: 0, remSec, isFinal, ctaText, focusX: defaultFx };
 }
 
 function resolveBridgeCtaAudio(projectDir, item, seg) {
@@ -171,6 +173,8 @@ function resolveBridgeCtaAudio(projectDir, item, seg) {
   fs.mkdirSync(outDir, { recursive: true });
 
   const requestedMode = (getArg('--mode') || cfg.mode || 'fullscreen').toLowerCase();
+  const framingArg = (getArg('--framing') || cfg.framing || cfg.shortsFraming || 'crop').toLowerCase();
+  const framing = (framingArg === 'cinema' || framingArg === 'contain') ? framingArg : 'crop';
   const format = hasFlag('--cliffhanger') ? 'cliffhanger' : (hasFlag('--single') ? 'single' : (getArg('--format') || cfg.shortsFormat || undefined));
   const fps = getArg('--fps') || '30';
   const fpsNum = Number(fps) || 30;
@@ -216,7 +220,7 @@ function resolveBridgeCtaAudio(projectDir, item, seg) {
       ? epRanges.filter(item => item.isEvent)
       : (onlyEp ? epRanges.filter(item => item.ep === onlyEp && !item.isSingle && !item.isEvent) : epRanges));
   const resolvedCap = maxSec || (epRanges.some(e => e.isCliffhanger) ? 50 : 58);
-  console.log(`=== Rendering ${selected.length} Vertical Shorts (1080x1920, ${fps}fps, mode=${effectiveMode}${useNativeFullscreen ? ' [native canvas]' : ''}, ${lufs} LUFS, concurrency=${concurrency}, cap=${allowOver60 ? `${resolvedCap}s (override)` : `${Math.min(resolvedCap, 60)}s <= 60s`}) ===`);
+  console.log(`=== Rendering ${selected.length} Vertical Shorts (1080x1920, ${fps}fps, mode=${effectiveMode}${useNativeFullscreen ? ` [native 1:1 framing=${framing}]` : ''}, ${lufs} LUFS, concurrency=${concurrency}, cap=${allowOver60 ? `${resolvedCap}s (override)` : `${Math.min(resolvedCap, 60)}s <= 60s`}) ===`);
   console.log(`✓ Saved Shorts plan: ${path.relative(projectDir, planPath)} (${epRanges.length} outputs)`);
 
   for (const item of selected) {
@@ -257,18 +261,20 @@ function resolveBridgeCtaAudio(projectDir, item, seg) {
     if (browser) {
       page = await browser.newPage();
       await page.setViewport({ width: 1080, height: 1920, deviceScaleFactor: 1 });
-      await page.goto('file:///' + htmlPath.replace(/\\/g, '/') + '?shorts=1', { waitUntil: 'load' });
-      hasNativeSetter = await page.evaluate(async () => {
+      await page.goto('file:///' + htmlPath.replace(/\\/g, '/') + `?shorts=1&framing=${encodeURIComponent(framing)}`, { waitUntil: 'load' });
+      hasNativeSetter = await page.evaluate(async (fr) => {
         if (window.__setHeadless) window.__setHeadless();
         document.body.classList.add('headless', 'export-mode');
         await document.fonts.ready;
+        window.__SHORTS_FRAMING = fr;
+        if (typeof window.setShortsFraming === 'function') window.setShortsFraming(fr);
         if (typeof window.setShortsMode === 'function') {
           window.setShortsMode(true);
           return true;
         }
         window.SHORTS_MODE = true;
         return false;
-      });
+      }, framing);
     }
 
     try {
@@ -400,19 +406,24 @@ function resolveBridgeCtaAudio(projectDir, item, seg) {
               }
               const dataUrls = await page.evaluate((items, ctaOverlayActive) => {
                 const stage = document.getElementById('stage');
-                return items.map(it => {
-                  window.__SHORTS_REM_SEC = it.remSec;
-                  window.__SHORTS_IS_FINAL = it.isFinal;
-                  window.__SHORTS_CTA_TEXT = it.ctaText || null;
-                  window.__SHORTS_CTA_OVERLAY_ACTIVE = ctaOverlayActive;
-                  window.__SHORTS_IN_BRIDGE = Boolean(it.isBridgeCta);
-                  if (it.isRecap && typeof window.renderRecapAtTime === 'function') {
-                    window.renderRecapAtTime(it.t, it.recap);
-                  } else {
-                    window.renderAtTime(it.t);
-                  }
-                  return stage.toDataURL('image/jpeg', 0.88);
-                });
+                try {
+                  return items.map(it => {
+                    window.__SHORTS_FOCUS_X = typeof it.focusX === 'number' ? it.focusX : null;
+                    window.__SHORTS_REM_SEC = it.remSec;
+                    window.__SHORTS_IS_FINAL = it.isFinal;
+                    window.__SHORTS_CTA_TEXT = it.ctaText || null;
+                    window.__SHORTS_CTA_OVERLAY_ACTIVE = ctaOverlayActive;
+                    window.__SHORTS_IN_BRIDGE = Boolean(it.isBridgeCta);
+                    if (it.isRecap && typeof window.renderRecapAtTime === 'function') {
+                      window.renderRecapAtTime(it.t, it.recap);
+                    } else {
+                      window.renderAtTime(it.t);
+                    }
+                    return stage.toDataURL('image/jpeg', 0.88);
+                  });
+                } finally {
+                  window.__SHORTS_FOCUS_X = null;
+                }
               }, framesBatch, hasCtaOverlay);
               for (const durl of dataUrls) {
                 if (ffClosed) break;
@@ -424,13 +435,18 @@ function resolveBridgeCtaAudio(projectDir, item, seg) {
             for (let f = 0; f < totalFrames && !ffClosed; f++) {
               const m = mapLocalTimeToSegment(f / fpsNum, segments, durSec, item);
               await page.evaluate((it, ctaOverlayActive) => {
+                window.__SHORTS_FOCUS_X = typeof it.focusX === 'number' ? it.focusX : null;
                 window.__SHORTS_REM_SEC = it.remSec;
                 window.__SHORTS_IS_FINAL = it.isFinal;
                 window.__SHORTS_CTA_TEXT = it.ctaText || null;
                 window.__SHORTS_CTA_OVERLAY_ACTIVE = ctaOverlayActive;
                 window.__SHORTS_IN_BRIDGE = Boolean(it.isBridgeCta);
-                if (it.isRecap && typeof window.renderRecapAtTime === 'function') window.renderRecapAtTime(it.t, it.recap);
-                else window.renderAtTime(it.t);
+                try {
+                  if (it.isRecap && typeof window.renderRecapAtTime === 'function') window.renderRecapAtTime(it.t, it.recap);
+                  else window.renderAtTime(it.t);
+                } finally {
+                  window.__SHORTS_FOCUS_X = null;
+                }
               }, m, hasCtaOverlay);
               if (ffClosed) break;
               const buf = await page.screenshot({ type: 'jpeg', quality: 88 });

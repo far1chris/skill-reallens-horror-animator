@@ -110,7 +110,7 @@ node shorts_planner.js --format cliffhanger --min-sec 40 --max-sec 50
 # 2. Generate top title overlays + Related Video Bridge CTA overlays
 node generate_shorts_overlays.js --format cliffhanger
 
-# 3. Render all 3 Shorts in native 1080x1920 fullscreen (30fps, -14 LUFS)
+# 3. Render all 3 Shorts in native 1080x1920 full-screen uniform 1:1 canvas (30fps, -14 LUFS; default --framing crop full-bleed 1:1 — use s.focusX on off-center scenes, or pass --framing cinema|contain for blur-fill)
 node render_all_shorts.js --format cliffhanger
 
 # 4. Generate clean HUD-free 9:16 covers & run strict QA

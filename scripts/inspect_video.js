@@ -556,9 +556,9 @@ function inspectVideo(videoPath, options = {}) {
     console.log(`   - Dead Zones: Top 180px, Bottom 320px, Right 140px`);
     console.log(`   - Shorts Duration (<= 60.0s):     ${shortsDurationPass ? `✅ VERIFIED (${totalSec.toFixed(2)}s)` : `❌ FAIL (${totalSec.toFixed(2)}s > 60.0s — split into EP 6, 7, 8+!)`}`);
     if (hasSourceCode) {
-      // Native 9:16 full-screen SHORTS_MODE stretches logical 1280x720 world via beginShortsWorld() onto 1080x1920
-      // with SHORTS_CHAR_SCALE aspect compensation and screen-space HUD/subtitles inside Y <= 1600 and right 140px safe zones.
-      fullScreenShortsPass = coreCode.includes('SHORTS_MODE') && (coreCode.includes('beginShortsWorld') || coreCode.includes('SHORTS_SX'));
+      // Native 9:16 SHORTS_MODE uses uniform 1:1 scaling via renderShortsWorld()/beginShortsWorld() onto 1080x1920
+      // (default cinema blur-fill or uniform crop; never non-uniform SHORTS_SX=1.50 Y-stretch!) with safe-zone HUD/subtitles.
+      fullScreenShortsPass = coreCode.includes('SHORTS_MODE') && (coreCode.includes('renderShortsWorld') || coreCode.includes('beginShortsWorld')) && !/SHORTS_SX\s*=\s*1\.5\b/.test(coreCode);
       const subMatch = coreCode.match(/fillText\(cue\.text,\s*[^,]+,\s*([^)]+)\)/);
       const subYMatch = coreCode.match(/const\s+subY\s*=\s*([^;]+);/);
       if (subMatch) {
@@ -572,7 +572,7 @@ function inspectVideo(videoPath, options = {}) {
         safeZoneCardPass = coreCode.includes('140') || coreCode.includes('(W - w) / 2') || coreCode.includes('SHORTS_MODE');
       }
     }
-    console.log(`   - Full-Screen 9:16 SHORTS_MODE:    ${fullScreenShortsPass ? '✅ VERIFIED (1080x1920 full-bleed canvas)' : '❌ FAIL (Missing beginShortsWorld/SHORTS_MODE full-screen support)'}`);
+    console.log(`   - Full-Screen 9:16 SHORTS_MODE:    ${fullScreenShortsPass ? '✅ VERIFIED (1080x1920 uniform 1:1 canvas — zero Y-stretch)' : '❌ FAIL (Missing uniform renderShortsWorld/beginShortsWorld or legacy 1.50 Y-stretch detected)'}`);
     console.log(`   - Subtitle Safe Zone (Y <= 1600): ${safeZoneSubtitlePass ? '✅ VERIFIED' : '❌ FAIL'}`);
     console.log(`   - HUD Card Safe Placement:        ${safeZoneCardPass ? '✅ VERIFIED' : '⚠️ WARN'}`);
   } else {
